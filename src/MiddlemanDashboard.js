@@ -246,21 +246,17 @@ useEffect(() => {
 
 
 useEffect(() => {
-  const fetchInvoices = async () => {
-    try {
-      const q = query(collection(db, 'invoices'));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => b.timestamp - a.timestamp); // Newest first
-      setInvoices(data);
-    } catch (err) {
-      console.error('Error fetching invoices:', err);
-    }
-  };
+  const user = auth.currentUser;
+  if (!user) return;
 
-  fetchInvoices();
+  const q = query(collection(db, 'invoices'), where('middlemanId', '==', user.uid));
+  const unsub = onSnapshot(q, (snapshot) => {
+    setInvoices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+
+  return () => unsub();
 }, []);
+
 
 
 
