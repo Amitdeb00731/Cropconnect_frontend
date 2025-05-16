@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: razorpay-flask-api
+    runtime: python
+    buildCommand: ./render/build.sh
+    startCommand: gunicorn app:app --bind 0.0.0.0:10000
+    envVars:
+      - key: PORT
+        value: 10000
+    plan: free

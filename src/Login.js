@@ -65,6 +65,7 @@ export default function Login() {
           uid: user.uid,
           name: user.displayName,
           email: user.email,
+          accountType: ''
         }
       });
     }

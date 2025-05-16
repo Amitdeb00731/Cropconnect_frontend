@@ -20,7 +20,8 @@ export default function CompleteProfile() {
     name: defaultName,
     email,
     password,
-    accountType: defaultAccountType = ''
+    accountType: defaultAccountType = '',
+    uid: locationUid = ''
   } = location.state || {};
 
   const [name, setName] = useState(defaultName || '');
@@ -29,30 +30,28 @@ export default function CompleteProfile() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageFile, setImageFile] = useState(null);
-  const [uid, setUid] = useState('');
+  const [uid, setUid] = useState(locationUid || auth.currentUser?.uid || '');
 
-  useEffect(() => {
-    if (!email || !password) {
-      alert("Missing user credentials. Please register again.");
+ useEffect(() => {
+    if (!email || !uid) {
+      console.warn("Missing email or UID in CompleteProfile.");
+      alert("Missing user credentials. Please login again.");
       navigate('/');
     }
-  }, [email, password, navigate]);
+  }, [email, uid, navigate]);
+
+
 
   const handleComplete = async () => {
-    if (!accountType || !dob || !name || !email || !password) {
+    if (!accountType || !dob || !name || !email || !uid)  {
       alert("Please fill in all required fields.");
       return;
     }
 
     try {
-      // Create user in Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const userId = userCredential.user.uid;
-      setUid(userId);
-
       // Save user profile to Firestore
-      await setDoc(doc(db, "users", userId), {
-        uid: userId,
+      await setDoc(doc(db, "users", uid), {
+        uid,
         name,
         email,
         accountType,
