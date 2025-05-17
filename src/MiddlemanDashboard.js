@@ -13,7 +13,10 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { runTransaction } from 'firebase/firestore';
-import { generateInvoicePDF } from './InvoiceGenerator';
+import {
+  generateInvoicePDF,
+  generateMillInvoicePDF
+} from './InvoiceGenerator';
 import { signOut } from 'firebase/auth';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -88,13 +91,35 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ✅ Utility to check if rice type is accepted by mill
+const isRiceTypeAcceptedByMill = (mill, riceType) => {
+  if (!mill?.riceRates || !riceType) return false;
+  return mill.riceRates.some(r =>
+    r.riceType?.toLowerCase().trim() === riceType.toLowerCase().trim()
+  );
+};
+
+
 
 export default function MiddlemanDashboard() {
   const [tab, setTab] = useState(0);
 const [proposals, setProposals] = useState([]);
 const [selectedFarmer, setSelectedFarmer] = useState(null);
 const [invoices, setInvoices] = useState([]);
+const [calculatedCost, setCalculatedCost] = useState(0);
 const [openFarmerDialog, setOpenFarmerDialog] = useState(false);
+const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); 
+
+const updateProcessingCost = (riceType, quantity) => {
+  const rate = selectedMill?.riceRates?.find(r => r.riceType === riceType)?.ratePerKg;
+  const qty = parseFloat(quantity);
+  if (rate && qty) {
+    setCalculatedCost((rate * qty).toFixed(2));
+  } else {
+    setCalculatedCost(0);
+  }
+};
+
 
 const handleViewFarmer = async (farmerId) => {
   const docRef = doc(db, 'users', farmerId);
@@ -136,7 +161,12 @@ const filteredInvoices = invoices.filter(inv => {
     default:
       return true;
   }
+}).filter(inv => {
+  if (invoiceTypeFilter === 'mill') return inv.type === 'mill_processing';
+  if (invoiceTypeFilter === 'farmer') return inv.type !== 'mill_processing';
+  return true;
 });
+
 
 const groupedByMonth = filteredInvoices.reduce((acc, inv) => {
   const date = new Date(inv.timestamp);
@@ -163,6 +193,18 @@ const [inspectionSnack, setInspectionSnack] = useState({ open: false, message: '
   const [proposeDialogOpen, setProposeDialogOpen] = useState(false);
 const [selectedHarvest, setSelectedHarvest] = useState(null);
 const [selectedRiceType, setSelectedRiceType] = useState('');
+const handleRiceTypeChange = (e) => {
+  const selected = e.target.value;
+  setSelectedRiceType(selected);
+
+  if (!isRiceTypeAcceptedByMill(selectedMill, selected)) {
+    setSnack({
+      open: true,
+      message: `${selectedMill?.name || 'This mill'} does not accept ${selected} rice type.`,
+      severity: 'warning',
+    });
+  }
+};
 const [processingRequests, setProcessingRequests] = useState([]);
 const [locationName, setLocationName] = useState('');
 const [proposedPrice, setProposedPrice] = useState('');
@@ -432,6 +474,126 @@ const addToProcessedInventory = async (req) => {
   }
 };
 
+
+const handleMillCashPayment = async (req) => {
+  try {
+    await updateDoc(doc(db, 'millProcessingRequests', req.id), {
+      paymentStatus: 'cash_pending',
+      paymentDetails: {
+        method: 'cash',
+        amount: req.processingCost,
+        requestedAt: Date.now()
+      }
+    });
+
+    await addDoc(collection(db, 'notifications'), {
+      userId: req.millId,
+      type: 'cash_payment_pending',
+      message: `Cash payment of ₹${req.processingCost} pending for ${req.riceType}`,
+      seen: false,
+      timestamp: Date.now(),
+      requestId: req.id
+    });
+
+    // ✅ Generate and Save Invoice
+    const middlemanSnap = await getDoc(doc(db, 'users', req.middlemanId));
+    const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
+
+    await addDoc(collection(db, 'invoices'), {
+      middlemanId: req.middlemanId,
+      millId: req.millId,
+      middlemanName,
+      millName: req.mill?.name || 'Unknown Mill',
+      riceType: req.riceType,
+      quantity: req.quantity,
+      processingCost: req.processingCost,
+      paymentMethod: 'cash',
+      paymentTimestamp: Date.now(),
+      timestamp: Date.now(),
+      type: 'mill_processing'
+    });
+
+    setSnack({ open: true, message: 'Cash payment recorded and invoice saved!', severity: 'success' });
+  } catch (err) {
+    console.error('Cash payment error:', err);
+    setSnack({ open: true, message: 'Failed to send payment.', severity: 'error' });
+  }
+};
+
+
+
+
+
+const handleMillRazorpayPayment = async (req) => {
+  const scriptLoaded = await loadRazorpayScript();
+  if (!scriptLoaded) {
+    setSnack({ open: true, message: 'Razorpay SDK failed to load', severity: 'error' });
+    return;
+  }
+
+  try {
+    const res = await fetch("https://flask-razorpay-backend.onrender.com/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: parseFloat(req.processingCost), currency: "INR" })
+    });
+
+    const orderData = await res.json();
+
+    const options = {
+      key: orderData.key,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      order_id: orderData.order_id,
+      handler: async function (response) {
+        await updateDoc(doc(db, 'millProcessingRequests', req.id), {
+          paymentStatus: 'razorpay_done',
+          paymentDetails: {
+            method: 'razorpay',
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            paidAt: Date.now()
+          }
+        });
+
+        await addDoc(collection(db, 'notifications'), {
+          userId: req.millId,
+          type: 'razorpay_payment_done',
+          message: `Razorpay payment ₹${req.processingCost} received for ${req.riceType}`,
+          seen: false,
+          requestId: req.id,
+          timestamp: Date.now()
+        });
+
+        // ✅ Generate and Save Invoice
+        const middlemanSnap = await getDoc(doc(db, 'users', req.middlemanId));
+        const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
+
+        await addDoc(collection(db, 'invoices'), {
+          middlemanId: req.middlemanId,
+          millId: req.millId,
+          middlemanName,
+          millName: req.mill?.name || 'Unknown Mill',
+          riceType: req.riceType,
+          quantity: req.quantity,
+          processingCost: req.processingCost,
+          paymentMethod: 'razorpay',
+          paymentTimestamp: Date.now(),
+          timestamp: Date.now(),
+          type: 'mill_processing'
+        });
+
+        setSnack({ open: true, message: 'Payment done via Razorpay and invoice saved!', severity: 'success' });
+      }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  } catch (err) {
+    console.error('Razorpay error:', err);
+    setSnack({ open: true, message: 'Payment failed', severity: 'error' });
+  }
+};
 
 
 
@@ -711,9 +873,13 @@ const handleConfirmedDelete = async () => {
 
 
 const renderInvoiceCard = (inv) => {
-  const total = inv.harvests.reduce(
-    (sum, h) => sum + parseFloat(h.finalizedPrice || h.proposedPrice || 0), 0
-  );
+  const isMillInvoice = inv.type === 'mill_processing';
+  const total = isMillInvoice
+    ? parseFloat(inv.processingCost || 0)
+    : inv.harvests.reduce(
+        (sum, h) => sum + parseFloat(h.finalizedPrice || h.proposedPrice || 0),
+        0
+      );
 
   return (
     <Grid item xs={12} sm={6} md={4} key={inv.id}>
@@ -727,27 +893,57 @@ const renderInvoiceCard = (inv) => {
         <Typography variant="body2" color="text.secondary">
           Middleman: {inv.middlemanName}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Farmer: {inv.farmerName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Payment: {inv.paymentMethod}
-        </Typography>
-         <Box mt={1}>
-          {inv.harvests.map((h, i) => (
-            <Typography key={i} variant="body2">
-              • {h.riceType} — {h.remainingQuantity} Kg — ₹{h.finalizedPrice || h.proposedPrice}
+
+        {isMillInvoice ? (
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Mill: {inv.millName}
             </Typography>
-          ))}
-        </Box>
+            <Typography variant="body2" color="text.secondary">
+              Payment: {inv.paymentMethod}
+            </Typography>
+            <Box mt={1}>
+              <Typography variant="body2">
+                • {inv.riceType} — {inv.quantity} Kg — ₹{inv.processingCost}
+              </Typography>
+            </Box>
+          </>
+        ) : (
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Farmer: {inv.farmerName}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Payment: {inv.paymentMethod}
+            </Typography>
+            <Box mt={1}>
+              {inv.harvests.map((h, i) => (
+                <Typography key={i} variant="body2">
+                  • {h.riceType} — {h.remainingQuantity} Kg — ₹{h.finalizedPrice || h.proposedPrice}
+                </Typography>
+              ))}
+            </Box>
+          </>
+        )}
+
         <Typography variant="body2" sx={{ mt: 1 }}>
           Total: ₹{total.toFixed(2)}
         </Typography>
+
         <Box mt={2} display="flex" gap={1} flexWrap="wrap">
-          <Button size="small" variant="contained" onClick={() => generateInvoicePDF(inv)}>
-            Download
-          </Button>
-           <Button
+          <Button
+  size="small"
+  variant="contained"
+  onClick={() =>
+    inv.type === 'mill_processing'
+      ? generateMillInvoicePDF(inv)
+      : generateInvoicePDF(inv)
+  }
+>
+  Download
+</Button>
+
+          <Button
             size="small"
             variant="outlined"
             color="error"
@@ -760,6 +956,7 @@ const renderInvoiceCard = (inv) => {
     </Grid>
   );
 };
+
 
 
 
@@ -1224,17 +1421,22 @@ const handleSendRequest = async () => {
 
       // 📝 Now add processing request
       const newRequestRef = doc(collection(db, 'millProcessingRequests'));
-      transaction.set(newRequestRef, {
-        millId: selectedMill.managerId,
-        middlemanId,
-        riceType: selectedRiceType,
-        quantity: qtyToSend,
-        requestStatus: 'pending',
-        timestamp: Date.now(),
-        harvestId: selectedInventoryItem?.harvestId || null,
-        middlemanCleared: false,
-        millCleared: false
-      });
+      const rateObj = selectedMill.riceRates.find(r => r.riceType === selectedRiceType);
+const ratePerKg = rateObj ? parseFloat(rateObj.ratePerKg) : 0;
+const processingCost = ratePerKg * qtyToSend;
+
+transaction.set(newRequestRef, {
+  millId: selectedMill.managerId,
+  middlemanId,
+  riceType: selectedRiceType,
+  quantity: qtyToSend,
+  requestStatus: 'pending',
+  timestamp: Date.now(),
+  harvestId: selectedInventoryItem?.harvestId || null,
+  middlemanCleared: false,
+  millCleared: false,
+  processingCost: parseFloat(processingCost.toFixed(2))
+});
     });
 
     // ✅ Reset form and show confirmation
@@ -2345,9 +2547,23 @@ const handleCashOption = async (inspection) => {
               <Typography variant="body2" color="text.secondary">
                 Engaged: {mill.engagedCapacity || 0} Kg
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Accepted Types: {mill.acceptedRiceTypes?.join(', ') || 'N/A'}
-              </Typography>
+              <Typography variant="subtitle2" sx={{ mt: 1 }}>
+  <strong>Rice Rates:</strong>
+</Typography>
+{mill.riceRates?.length > 0 ? (
+  <ul style={{ paddingLeft: 20 }}>
+    {mill.riceRates.map((rate, idx) => (
+      <li key={idx}>
+        {rate.riceType} — ₹{rate.ratePerKg}/Kg
+      </li>
+    ))}
+  </ul>
+) : (
+  <Typography variant="body2" color="text.secondary">
+    No rice rates defined
+  </Typography>
+)}
+
               <Typography variant="body2" color="text.secondary">
                 Location: {mill.location}
                 <Button
@@ -2391,42 +2607,82 @@ const handleCashOption = async (inspection) => {
   <DialogTitle>Send to {selectedMill?.name}</DialogTitle>
   <DialogContent>
     <Typography>Select Rice from Inventory:</Typography>
-  <Autocomplete
-  options={[...new Set(inventory.map(item => item.riceType))]} // ✅ unique rice types
-  getOptionLabel={(option) => option}
-  value={selectedRiceType}
-  onChange={(e, value) => {
-    setSelectedRiceType(value);
-    const matchedItem = inventory.find(item => item.riceType === value);
-    setSelectedInventoryItem(matchedItem || null);
-  }}
-  renderInput={(params) => (
-    <TextField {...params} label="Rice Type" margin="normal" />
-  )}
-/>
 
+    <Autocomplete
+      options={[...new Set(inventory.map(item => item.riceType))]}
+      getOptionLabel={(option) => option}
+      value={selectedRiceType}
+      onChange={(e, value) => {
+        setSelectedRiceType(value);
+        const matchedItem = inventory.find(item => item.riceType === value);
+        setSelectedInventoryItem(matchedItem || null);
+        updateProcessingCost(value, sendQuantity);
 
+        // ✅ Check if the selected mill accepts this rice type
+        if (value && !isRiceTypeAcceptedByMill(selectedMill, value)) {
+          setSnack({
+            open: true,
+            message: `${selectedMill?.name || 'This mill'} does not accept ${value} rice type.`,
+            severity: 'warning',
+          });
+        }
+      }}
+      renderOption={(props, option) => {
+        const isDisabled = !isRiceTypeAcceptedByMill(selectedMill, option);
+        return (
+          <li {...props} style={{ color: isDisabled ? 'gray' : 'inherit' }}>
+            {option} {isDisabled ? '(Not accepted)' : ''}
+          </li>
+        );
+      }}
+      isOptionEqualToValue={(option, value) => option === value}
+      renderInput={(params) => (
+        <TextField {...params} label="Rice Type" margin="normal" />
+      )}
+    />
 
-{selectedRiceType && (
-  <Typography variant="body2" sx={{ mt: 1 }}>
-    Available: {(groupedInventory[selectedRiceType]?.totalQuantity || 0).toFixed(2)} Kg
-  </Typography>
-)}
-   <TextField
-  fullWidth
-  label="Quantity to Send"
-  type="number"
-  value={sendQuantity}
-  onChange={(e) => setSendQuantity(e.target.value)}
-  margin="normal"
-/>
+    {selectedRiceType && (
+      <Typography variant="body2" sx={{ mt: 1 }}>
+        Available: {(groupedInventory[selectedRiceType]?.totalQuantity || 0).toFixed(2)} Kg
+      </Typography>
+    )}
 
+    <TextField
+      fullWidth
+      label="Quantity to Send"
+      type="number"
+      value={sendQuantity}
+      onChange={(e) => {
+        setSendQuantity(e.target.value);
+        updateProcessingCost(selectedRiceType, e.target.value);
+      }}
+      margin="normal"
+    />
+
+    {calculatedCost > 0 && (
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        💰 Estimated Processing Cost: ₹{calculatedCost}
+      </Typography>
+    )}
   </DialogContent>
+
   <DialogActions>
     <Button onClick={() => setSendDialogOpen(false)}>Cancel</Button>
-    <Button variant="contained" onClick={handleSendRequest}>Send Request</Button>
+    <Button
+      variant="contained"
+      onClick={handleSendRequest}
+      disabled={
+        !selectedRiceType ||
+        !sendQuantity ||
+        !isRiceTypeAcceptedByMill(selectedMill, selectedRiceType)
+      }
+    >
+      Send Request
+    </Button>
   </DialogActions>
 </Dialog>
+
+
 
 
 
@@ -2535,17 +2791,51 @@ const handleCashOption = async (inspection) => {
 
           {/* ✅ Add to Inventory Button */}
           {req.processingStatus === 'done' && (
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              sx={{ mt: 2 }}
-              onClick={() => addToProcessedInventory(req)}
-              disabled={req.inventoryAdded}
-            >
-              {req.inventoryAdded ? 'Added' : 'Add to Inventory'}
-            </Button>
-          )}
+  <>
+    <Typography sx={{ mt: 1 }}>
+      ✅ Processing Complete
+    </Typography>
+
+    {req.paymentStatus !== 'cash_collected' && req.paymentStatus !== 'razorpay_done' ? (
+      <>
+        <Typography sx={{ mt: 1 }}>
+          ⚠️ Payment Pending: ₹{req.processingCost}
+        </Typography>
+        <Button
+  variant="outlined"
+  color="warning"
+  sx={{ mt: 1, mr: 1 }}
+  onClick={() => handleMillCashPayment(req)}
+>
+  Pay in Cash
+</Button>
+<Button
+  variant="contained"
+  color="primary"
+  sx={{ mt: 1 }}
+  onClick={() => handleMillRazorpayPayment(req)}
+>
+  Pay with Razorpay
+</Button>
+      </>
+    ) : (
+      <>
+        <Typography sx={{ mt: 1 }}>✅ Payment Complete</Typography>
+        <Button
+          variant="contained"
+          color="success"
+          size="small"
+          sx={{ mt: 2 }}
+          onClick={() => addToProcessedInventory(req)}
+          disabled={req.inventoryAdded}
+        >
+          {req.inventoryAdded ? 'Added' : 'Add to Inventory'}
+        </Button>
+      </>
+    )}
+  </>
+)}
+
         </Box>
       </Card>
     </Grid>
@@ -2563,6 +2853,21 @@ const handleCashOption = async (inspection) => {
 
     {/* Filter Controls */}
     <Box display="flex" flexWrap="wrap" gap={2} alignItems="center" mb={3}>
+    
+  <FormControl sx={{ minWidth: 180 }}>
+    <InputLabel>Invoice Type</InputLabel>
+    <Select
+      label="Invoice Type"
+      value={invoiceTypeFilter}
+      onChange={(e) => setInvoiceTypeFilter(e.target.value)}
+    >
+      <MenuItem value="all">All</MenuItem>
+      <MenuItem value="mill">Mill Processing</MenuItem>
+      <MenuItem value="farmer">Farmer Purchases</MenuItem>
+    </Select>
+  </FormControl>
+
+
       <FormControl sx={{ minWidth: 180 }}>
         <InputLabel>Filter</InputLabel>
         <Select

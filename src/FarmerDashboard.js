@@ -40,6 +40,10 @@ import FarmerQuickStats from './FarmerQuickStats';
 import FarmerTimeline from './FarmerTimeline';
 import FarmerQuickActions from './FarmerQuickActions';
 import FarmerTipsAccordion from './FarmerTipsAccordion';
+import { fetchWeather } from './weather';
+import Lottie from 'lottie-react';
+import weatherAnimation from './assets/weather.json';
+
 
 
 
@@ -88,6 +92,9 @@ export default function FarmerDashboard() {
   });
   const [deals, setDeals] = useState([]);
   const [tawkDetails, setTawkDetails] = useState(null);
+  const [weather, setWeather] = useState(null);
+const [weatherLocationName, setWeatherLocationName] = useState('');
+const [weatherError, setWeatherError] = useState('');
   const [selectedMiddleman, setSelectedMiddleman] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]);
 const [openMiddlemanDialog, setOpenMiddlemanDialog] = useState(false);
@@ -875,6 +882,48 @@ const clearAllNotifications = async () => {
 };
 
 
+
+useEffect(() => {
+  const getWeatherUsingGeoapify = () => {
+    if (!navigator.geolocation) {
+      setWeatherError("Geolocation is not supported by this browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        console.log("📍 Coordinates:", latitude, longitude);
+
+        try {
+          // 1. Reverse Geocode using Geoapify
+          const geoRes = await fetch(
+            `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&apiKey=35d72c07d6f74bec8a373961eea91f46`
+          );
+          const geoData = await geoRes.json();
+          const place = geoData.features?.[0]?.properties?.formatted || 'Unknown location';
+          setWeatherLocationName(place);
+
+          // 2. Fetch Weather using WeatherAPI
+          const weatherData = await fetchWeather(latitude, longitude);
+          if (weatherData) setWeather(weatherData);
+          else setWeatherError("Failed to fetch weather data.");
+        } catch (err) {
+          console.error("❌ Error in Geoapify or Weather fetch:", err);
+          setWeatherError("Error fetching weather or location.");
+        }
+      },
+      (error) => {
+        console.error("❌ Geolocation error:", error);
+        setWeatherError("Location permission denied.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  getWeatherUsingGeoapify();
+}, []);
+
   
 
   return (
@@ -959,6 +1008,65 @@ const clearAllNotifications = async () => {
   onCheckInventory={() => setTab(4)} // Adjust this if Inventory is a different tab
 />
 <FarmerTipsAccordion />
+
+{weather && (
+  <Box
+    sx={{
+      mt: 3,
+      p: 3,
+      borderRadius: 4,
+      boxShadow: 3,
+      bgcolor: 'background.paper',
+      display: 'flex',
+      flexDirection: { xs: 'column', md: 'row' },
+      alignItems: 'center',
+      gap: 3,
+    }}
+  >
+    {/* Weather Lottie */}
+    <Box sx={{ width: { xs: '100%', md: 200 } }}>
+      <Lottie animationData={weatherAnimation} loop autoplay />
+    </Box>
+
+    {/* Weather Info */}
+    <Box sx={{ flex: 1 }}>
+      <Typography variant="h6" fontWeight="bold" gutterBottom>
+        🌤 Weather at Your Farm
+      </Typography>
+
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        📍 {weatherLocationName}
+      </Typography>
+
+      <Grid container spacing={2}>
+        <Grid item xs={6}>
+          <Typography variant="body1">🌡 Temp</Typography>
+          <Typography variant="h6">{weather.current.temp_c}°C</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          <Typography variant="body1">💧 Humidity</Typography>
+          <Typography variant="h6">{weather.current.humidity}%</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          <Typography variant="body1">🌬 Wind</Typography>
+          <Typography variant="h6">{weather.current.wind_kph} km/h</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          <Typography variant="body1">☁️ Condition</Typography>
+          <Typography variant="h6">{weather.current.condition.text}</Typography>
+        </Grid>
+      </Grid>
+    </Box>
+  </Box>
+)}
+
+{weatherError && (
+  <Alert severity="warning" sx={{ mt: 2 }}>
+    {weatherError}
+  </Alert>
+)}
+
+
 
 
 

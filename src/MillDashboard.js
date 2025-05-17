@@ -49,13 +49,14 @@ export default function MillDashboard() {
 const [openDecisionDialog, setOpenDecisionDialog] = useState(false);
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: '',
-    capacity: '',
-    riceTypes: '',
-    location: '',
-    latitude: '',
-    longitude: '',
-  });
+  name: '',
+  capacity: '',
+  riceRates: [{ riceType: '', ratePerKg: '' }],
+  location: '',
+  latitude: '',
+  longitude: '',
+});
+
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
 
@@ -121,9 +122,12 @@ const markProcessingDone = async (id) => {
     if (!reqSnap.exists()) throw new Error("Request not found");
 
     await updateDoc(reqRef, {
-      processingStatus: 'done',
-      completedAt: Date.now()
-    });
+  processingStatus: 'done',
+  completedAt: Date.now(),
+  paymentStatus: 'pending',
+  processingCost: parseFloat(reqSnap.data().processingCost || 0) || 0  // Set this if you’re not already doing so
+});
+
 
     await addDoc(collection(db, 'notifications'), {
       userId: reqSnap.data().middlemanId,
@@ -149,6 +153,25 @@ const markProcessingDone = async (id) => {
 
 
 
+const markMillCashCollected = async (req) => {
+  try {
+    await updateDoc(doc(db, 'millProcessingRequests', req.id), {
+      paymentStatus: 'cash_collected'
+    });
+
+    await addDoc(collection(db, 'notifications'), {
+      userId: req.middlemanId,
+      type: 'cash_collected_confirmed',
+      message: `Mill has confirmed cash collection for ${req.riceType}.`,
+      seen: false,
+      timestamp: Date.now()
+    });
+
+    setSnack({ open: true, message: 'Marked cash as collected', severity: 'success' });
+  } catch (err) {
+    setSnack({ open: true, message: 'Failed to update status', severity: 'error' });
+  }
+};
 
 
 
@@ -184,38 +207,39 @@ const handleDeclineRequest = async (request) => {
 
   // ✅ Check if required fields are present (excluding phone)
   const isComplete =
-    data.name &&
-    data.capacity &&
-    data.acceptedRiceTypes &&
-    Array.isArray(data.acceptedRiceTypes) &&
-    data.acceptedRiceTypes.length > 0 &&
-    data.location;
+  typeof data.name === 'string' && data.name.trim() !== '' &&
+  typeof data.capacity === 'number' && data.capacity > 0 &&
+  Array.isArray(data.riceRates) && data.riceRates.length > 0 &&
+  data.riceRates.every(r => r.riceType && !isNaN(parseFloat(r.ratePerKg))) &&
+  typeof data.location === 'string' && data.location.trim() !== '';
 
   if (isComplete) {
     setMillProfile(data);
   } else {
     // Open the form prefilled if partially filled
     setFormData({
-      name: data.name || '',
-      capacity: data.capacity || '',
-      riceTypes: (data.acceptedRiceTypes || []).join(', '),
-      location: data.location || '',
-      latitude: data.latitude || '',
-      longitude: data.longitude || '',
-    });
+  name: data.name || '',
+  capacity: data.capacity || '',
+  riceRates: data.riceRates || [{ riceType: '', ratePerKg: '' }],
+  location: data.location || '',
+  latitude: data.latitude || '',
+  longitude: data.longitude || '',
+});
+
     setEditMode(true);
     setShowProfileForm(true);
   }
 } else {
   // First time user
   setFormData({
-    name: '',
-    capacity: '',
-    riceTypes: '',
-    location: '',
-    latitude: '',
-    longitude: '',
-  });
+  name: '',
+  capacity: '',
+  riceRates: [{ riceType: '', ratePerKg: '' }],
+  location: '',
+  latitude: '',
+  longitude: '',
+});
+
   setEditMode(true);
   setShowProfileForm(true);
 }
@@ -299,37 +323,43 @@ const handleDeclineRequest = async (request) => {
 
     const ref = doc(db, 'mills', millId);
 
-    await setDoc(ref, {
-      name: formData.name,
-      capacity: parseFloat(formData.capacity),
-      acceptedRiceTypes: formData.riceTypes.split(',').map(r => r.trim()),
-      location: formData.location,
-      latitude: formData.latitude,
-      longitude: formData.longitude,
-      engagedCapacity: millProfile?.engagedCapacity || 0,
-      managerId: millId,
-      timestamp: Date.now()
-    });
+   await setDoc(ref, {
+  name: formData.name.trim(),
+  capacity: parseFloat(formData.capacity),
+  riceRates: formData.riceRates.filter(r => r.riceType && !isNaN(parseFloat(r.ratePerKg))).map(r => ({
+    riceType: r.riceType.trim(),
+    ratePerKg: parseFloat(r.ratePerKg),
+  })),
+  location: formData.location.trim(),
+  latitude: formData.latitude || '',
+  longitude: formData.longitude || '',
+  engagedCapacity: millProfile?.engagedCapacity || 0,
+  managerId: millId,
+  timestamp: Date.now()
+});
+
+
 
     const savedSnap = await getDoc(ref);
     if (savedSnap.exists()) {
       setMillProfile(savedSnap.data());
     }
-
+    setEditMode(false);
     setShowProfileForm(false);
     setSnack({ open: true, message: 'Mill profile saved!', severity: 'success' });
   };
 
   // ✏️ Open form in edit mode
   const openEditProfile = () => {
-    setFormData({
-      name: millProfile.name,
-      capacity: millProfile.capacity,
-      riceTypes: millProfile.acceptedRiceTypes.join(', '),
-      location: millProfile.location,
-      latitude: millProfile.latitude,
-      longitude: millProfile.longitude,
-    });
+   setFormData({
+  name: millProfile.name,
+  capacity: millProfile.capacity,
+  riceRates: millProfile.riceRates || [{ riceType: '', ratePerKg: '' }],
+  location: millProfile.location,
+  latitude: millProfile.latitude,
+  longitude: millProfile.longitude,
+});
+
     setShowProfileForm(true);
   };
 
@@ -443,6 +473,16 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
                 </Button>
               </Box>
             )}
+
+            {req.paymentStatus === 'cash_pending' && (
+  <Box mt={1}>
+    <Typography>💰 Payment in Cash Pending: ₹{req.processingCost}</Typography>
+    <Button variant="contained" onClick={() => markMillCashCollected(req)} sx={{ mt: 1 }}>
+      Mark Cash as Collected
+    </Button>
+  </Box>
+)}
+
           </Card>
         </Grid>
       ))}
@@ -460,46 +500,96 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
       {/* 📝 Mill Profile Form */}
      <Dialog open={showProfileForm} fullWidth maxWidth="sm">
   <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-  {editMode ? 'Edit Mill Details' : 'Mill Details'}
-  {!editMode && (
-    <IconButton onClick={() => {
-      setShowProfileForm(false);
-      setEditMode(false);
-    }}>
-      <CloseIcon />
-    </IconButton>
-  )}
-</DialogTitle>
+    {editMode ? 'Edit Mill Details' : 'Mill Details'}
+    {!editMode && (
+      <IconButton onClick={() => {
+        setShowProfileForm(false);
+        setEditMode(false);
+      }}>
+        <CloseIcon />
+      </IconButton>
+    )}
+  </DialogTitle>
 
   <DialogContent>
-
     {editMode ? (
       <>
         <TextField
           label="Mill Name"
-          fullWidth margin="normal"
+          fullWidth
+          margin="normal"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
         />
         <TextField
           label="Daily Capacity (Kg)"
           type="number"
-          fullWidth margin="normal"
+          fullWidth
+          margin="normal"
           value={formData.capacity}
           onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
         />
-        <TextField
-          label="Accepted Rice Types (comma separated)"
-          fullWidth margin="normal"
-          value={formData.riceTypes}
-          onChange={(e) => setFormData({ ...formData, riceTypes: e.target.value })}
-        />
+
+        {/* ✅ Rice Types and Rates */}
+        <Box mt={2}>
+          <Typography variant="subtitle1" fontWeight={600}>
+            Rice Types and Processing Rates (₹/Kg)
+          </Typography>
+          {formData.riceRates.map((rate, index) => (
+            <Box key={index} display="flex" alignItems="center" gap={1} mt={1}>
+              <TextField
+                label="Rice Type"
+                value={rate.riceType}
+                onChange={(e) => {
+                  const updated = [...formData.riceRates];
+                  updated[index].riceType = e.target.value;
+                  setFormData((prev) => ({ ...prev, riceRates: updated }));
+                }}
+                size="small"
+              />
+              <TextField
+                label="Rate (₹/Kg)"
+                type="number"
+                value={rate.ratePerKg}
+                onChange={(e) => {
+                  const updated = [...formData.riceRates];
+                  updated[index].ratePerKg = e.target.value;
+                  setFormData((prev) => ({ ...prev, riceRates: updated }));
+                }}
+                size="small"
+              />
+              <Button
+                color="error"
+                onClick={() => {
+                  const updated = [...formData.riceRates];
+                  updated.splice(index, 1);
+                  setFormData((prev) => ({ ...prev, riceRates: updated }));
+                }}
+              >
+                Remove
+              </Button>
+            </Box>
+          ))}
+          <Button
+            sx={{ mt: 1 }}
+            onClick={() =>
+              setFormData((prev) => ({
+                ...prev,
+                riceRates: [...prev.riceRates, { riceType: '', ratePerKg: '' }],
+              }))
+            }
+          >
+            Add Rice Type
+          </Button>
+        </Box>
+
+        {/* 📍 Location */}
         <Autocomplete
           freeSolo
           options={locationOptions}
           inputValue={formData.location}
           onInputChange={(e, val) => {
-            setFormData(prev => ({ ...prev, location: val }));
+            setFormData((prev) => ({ ...prev, location: val }));
             handleLocationSearch(val);
           }}
           renderInput={(params) => (
@@ -522,32 +612,60 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
             />
           )}
         />
+
+        {/* ✅ Save/Cancel */}
         <Box mt={2} display="flex" justifyContent="flex-end" gap={2}>
-          <Button variant="outlined" onClick={() => setEditMode(false)}>Cancel</Button>
-          <Button onClick={saveMillProfile} variant="contained">Save</Button>
+          <Button variant="outlined" onClick={() => setEditMode(false)}>
+            Cancel
+          </Button>
+          <Button onClick={saveMillProfile} variant="contained">
+            Save
+          </Button>
         </Box>
       </>
     ) : (
       <>
-        <Typography variant="subtitle1" gutterBottom><strong>Mill Name:</strong> {millProfile?.name}</Typography>
-        <Typography variant="subtitle1" gutterBottom><strong>Capacity:</strong> {millProfile?.capacity} Kg</Typography>
         <Typography variant="subtitle1" gutterBottom>
-          <strong>Accepted Rice Types:</strong> {millProfile?.acceptedRiceTypes?.join(', ')}
+          <strong>Mill Name:</strong> {millProfile?.name}
         </Typography>
-        <Typography variant="subtitle1" gutterBottom><strong>Location:</strong> {millProfile?.location}</Typography>
+        <Typography variant="subtitle1" gutterBottom>
+          <strong>Capacity:</strong> {millProfile?.capacity} Kg
+        </Typography>
+        <Typography variant="subtitle1" gutterBottom>
+          <strong>Accepted Rice Types & Rates:</strong>
+        </Typography>
+        {millProfile?.riceRates?.length > 0 ? (
+          <ul style={{ paddingLeft: 20, marginTop: 4 }}>
+            {millProfile.riceRates.map((r, i) => (
+              <li key={i}>
+                {r.riceType} — ₹{r.ratePerKg}/Kg
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Not specified
+          </Typography>
+        )}
+        <Typography variant="subtitle1" gutterBottom>
+          <strong>Location:</strong> {millProfile?.location}
+        </Typography>
 
         <Box mt={2} display="flex" justifyContent="flex-end">
-          <Button onClick={() => {
-            setFormData({
-              name: millProfile.name,
-              capacity: millProfile.capacity,
-              riceTypes: millProfile.acceptedRiceTypes.join(', '),
-              location: millProfile.location,
-              latitude: millProfile.latitude,
-              longitude: millProfile.longitude,
-            });
-            setEditMode(true);
-          }} variant="contained">
+          <Button
+            variant="contained"
+            onClick={() => {
+              setFormData({
+                name: millProfile.name,
+                capacity: millProfile.capacity,
+                riceRates: millProfile.riceRates || [{ riceType: '', ratePerKg: '' }],
+                location: millProfile.location,
+                latitude: millProfile.latitude,
+                longitude: millProfile.longitude,
+              });
+              setEditMode(true);
+            }}
+          >
             Edit
           </Button>
         </Box>
@@ -555,6 +673,7 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
     )}
   </DialogContent>
 </Dialog>
+
 
 
 {tab === 2 && (
