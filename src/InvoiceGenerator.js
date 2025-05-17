@@ -125,13 +125,22 @@ export const generateMillInvoicePDF = async (invoice) => {
 
   doc.setFontSize(12);
   doc.setLineWidth(0.1);
-  doc.rect(14, 35, 180, 35);
   doc.setFont("helvetica", "normal");
-  doc.text(`Invoice ID: ${invoice.id}`, 18, 45);
-  doc.text(`Date: ${new Date(invoice.timestamp).toLocaleString()}`, 18, 52);
-  doc.text(`Middleman: ${invoice.middlemanName}`, 18, 59);
-  doc.text(`Mill: ${invoice.millName}`, 100, 45);
-  doc.text(`Payment Method: ${invoice.paymentMethod}`, 100, 52);
+
+// Draw box for basic info (excluding mill address)
+doc.setLineWidth(0.1);
+doc.rect(14, 35, 180, 35);
+doc.text(`Invoice ID: ${invoice.id}`, 18, 45);
+doc.text(`Date: ${new Date(invoice.timestamp).toLocaleString()}`, 18, 52);
+doc.text(`Middleman: ${invoice.middlemanName}`, 18, 59);
+doc.text(`Mill: ${invoice.millName}`, 100, 45);
+doc.text(`Payment Method: ${invoice.paymentMethod}`, 100, 52);
+
+// Add Address below the box
+const millAddress = invoice.millLocation || 'N/A';
+const addressLines = doc.splitTextToSize(`Mill Address: ${millAddress}`, 180); // Wrap long text
+const addressY = 120;
+doc.text(addressLines, 14, 75); // Start just below the box
 
   const tableData = [[
     "1",
@@ -141,7 +150,7 @@ export const generateMillInvoicePDF = async (invoice) => {
   ]];
 
   autoTable(doc, {
-    startY: 75,
+  startY: 72 + addressLines.length * 6,
     head: [["#", "Rice Type", "Quantity", "Processing Cost"]],
     body: tableData,
     theme: "grid",

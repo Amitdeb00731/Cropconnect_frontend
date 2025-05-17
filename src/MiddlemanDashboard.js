@@ -504,6 +504,7 @@ const handleMillCashPayment = async (req) => {
       millId: req.millId,
       middlemanName,
       millName: req.mill?.name || 'Unknown Mill',
+      millLocation: req.mill?.location || 'N/A', 
       riceType: req.riceType,
       quantity: req.quantity,
       processingCost: req.processingCost,
@@ -574,6 +575,7 @@ const handleMillRazorpayPayment = async (req) => {
           millId: req.millId,
           middlemanName,
           millName: req.mill?.name || 'Unknown Mill',
+          millLocation: req.mill?.location || 'N/A', 
           riceType: req.riceType,
           quantity: req.quantity,
           processingCost: req.processingCost,
@@ -897,8 +899,9 @@ const renderInvoiceCard = (inv) => {
         {isMillInvoice ? (
           <>
             <Typography variant="body2" color="text.secondary">
-              Mill: {inv.millName}
-            </Typography>
+  Mill: {inv.millName} — {inv.millLocation || 'N/A'}
+</Typography>
+
             <Typography variant="body2" color="text.secondary">
               Payment: {inv.paymentMethod}
             </Typography>
