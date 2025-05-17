@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Button, Typography, Container, Box, Tab, Tabs, Grid, Paper, MenuItem, TextField, Autocomplete,
-  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress
+  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress, Avatar, ListItem, ListItemText
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -15,6 +15,7 @@ import { SwipeableList, SwipeableListItem, Type as ListType } from 'react-swipea
 import 'react-swipeable-list/dist/styles.css';
 import { useTheme, useMediaQuery } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ChatBox from './ChatBox';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { Tooltip, Dialog, DialogTitle, DialogContent } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -94,12 +95,68 @@ export default function FarmerDashboard() {
   const [tawkDetails, setTawkDetails] = useState(null);
   const [weather, setWeather] = useState(null);
 const [weatherLocationName, setWeatherLocationName] = useState('');
+const [selectedChatId, setSelectedChatId] = useState(null);
+const [chats, setChats] = useState([]);
+
+useEffect(() => {
+  const user = auth.currentUser;
+  const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+
+  const unsub = onSnapshot(q, async (snap) => {
+    const updatedChats = await Promise.all(
+      snap.docs.map(async (docSnap) => {
+        const chat = { id: docSnap.id, ...docSnap.data() };
+        const otherId = chat.participants.find(p => p !== user.uid);
+
+        // Fetch other user info (middleman/mill)
+        let otherUserData = { name: 'Unknown', profilePicture: null };
+        try {
+          const userSnap = await getDoc(doc(db, 'users', otherId));
+          if (userSnap.exists()) {
+            otherUserData = userSnap.data();
+          }
+        } catch (err) {
+          console.error("User fetch error:", err.message);
+        }
+
+        // Count unseen messages
+        let newMessages = 0;
+        try {
+          const messagesSnap = await getDocs(collection(db, 'chats', docSnap.id, 'messages'));
+          newMessages = messagesSnap.docs.filter(doc =>
+            doc.data().senderId !== user.uid && !doc.data().seen
+          ).length;
+        } catch (err) {
+          console.error("Message count error:", err.message);
+        }
+
+        return {
+          ...chat,
+          otherUserName: otherUserData.name,
+          otherUserProfile: otherUserData.profilePicture || null,
+          chatDocId: docSnap.id,
+          newMessages
+        };
+      })
+    );
+
+    setChats(updatedChats);
+
+    const totalUnseen = updatedChats.reduce((sum, c) => sum + c.newMessages, 0);
+    setUnseenMessages(totalUnseen);
+  });
+
+  return () => unsub();
+}, []);
+
+
 const [weatherError, setWeatherError] = useState('');
   const [selectedMiddleman, setSelectedMiddleman] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]);
 const [openMiddlemanDialog, setOpenMiddlemanDialog] = useState(false);
   const [inspectionRequests, setInspectionRequests] = useState([]);
   const [soldTransactions, setSoldTransactions] = useState([]);
+  const [unseenMessages, setUnseenMessages] = useState(0);
   const totalAmount = soldTransactions.reduce((sum, txn) => {
   const price = parseFloat(txn.finalizedPrice || txn.proposedPrice || txn.askingPrice || 0);
   return sum + price;
@@ -924,7 +981,14 @@ useEffect(() => {
   getWeatherUsingGeoapify();
 }, []);
 
-  
+
+useEffect(() => {
+  const unsub = auth.onAuthStateChanged(user => {
+    if (!user) setSelectedChatId(null);
+  });
+  return () => unsub();
+}, []);
+
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -987,6 +1051,12 @@ useEffect(() => {
   }
 />
 <Tab label="Transaction History" />
+<Tab label={
+  <Badge badgeContent={unseenMessages} color="error">
+    Messages
+  </Badge>
+} />
+
 
         </Tabs>
 
@@ -1334,11 +1404,7 @@ useEffect(() => {
           </Accordion>
         ))}
 
-        <Box textAlign="center" mt={4}>
-          <Button variant="outlined" color="secondary" onClick={handleLogout}>
-            Logout
-          </Button>
-        </Box>
+        
 
         <Snackbar
           open={snack.open}
@@ -1601,6 +1667,74 @@ useEffect(() => {
           <Typography><strong>Sold Out On:</strong> {item.soldOutAt || 'N/A'}</Typography>
         </Card>
       ))
+    )}
+  </Box>
+)}
+
+
+{tab === 5 && (
+  <Box sx={{ p: 2 }}>
+    {!selectedChatId ? (
+      <Paper elevation={3} sx={{ p: 2, borderRadius: 3 }}>
+        <Typography variant="h6" gutterBottom>Messages</Typography>
+
+        {chats.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            No chats yet. Middlemen will message you when interested.
+          </Typography>
+        ) : (
+          chats.map(chat => {
+            const otherId = chat.participants.find(p => p !== auth.currentUser?.uid);
+            return (
+              <Box
+                key={chat.id}
+                onClick={() => setSelectedChatId(chat.id)}
+                sx={{
+                  p: 2,
+                  my: 1,
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  backgroundColor: '#f5f5f5',
+                  '&:hover': {
+                    backgroundColor: '#e0e0e0'
+                  },
+                  transition: '0.2s ease'
+                }}
+              >
+                <ListItem button onClick={() => setSelectedChatId(chat.id)}>
+  <Avatar src={chat.otherUserProfile}>
+    {!chat.otherUserProfile && chat.otherUserName?.[0]}
+  </Avatar>
+  <ListItemText
+    primary={
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <span>{chat.otherUserName}</span>
+        {chat.newMessages > 0 && (
+          <Badge badgeContent={chat.newMessages} color="error" />
+        )}
+      </Box>
+    }
+  />
+</ListItem>
+
+              </Box>
+            );
+          })
+        )}
+      </Paper>
+    ) : (
+      <Box>
+        <ChatBox chatId={selectedChatId} />
+        <Box textAlign="center" mt={2}>
+          <Button
+            variant="outlined"
+            onClick={() => setSelectedChatId(null)}
+            sx={{ mt: 1 }}
+          >
+            Back to Messages
+          </Button>
+        </Box>
+      </Box>
     )}
   </Box>
 )}

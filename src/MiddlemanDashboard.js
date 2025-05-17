@@ -22,13 +22,14 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import RiceBowlIcon from '@mui/icons-material/RiceBowl';
-import {Avatar, Chip, Checkbox} from '@mui/material';
+import {Avatar, Chip, Checkbox, Paper} from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
+import ChatBox from './ChatBox';
 import TopNavbar from './TopNavbar';
 import { db } from './firebase';
 import { auth } from './firebase';
 import { format } from 'date-fns-tz'; 
-import { collection, getDocs, deleteDoc, doc, getDoc, addDoc, onSnapshot, query, where, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, getDoc, addDoc, onSnapshot, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import logo from './assets/Screenshot 2025-05-07 113933-Photoroom.png';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -105,9 +106,67 @@ export default function MiddlemanDashboard() {
   const [tab, setTab] = useState(0);
 const [proposals, setProposals] = useState([]);
 const [selectedFarmer, setSelectedFarmer] = useState(null);
+const [selectedChatId, setSelectedChatId] = useState(null);
+const [chats, setChats] = useState([]);
+
+useEffect(() => {
+  const user = auth.currentUser;
+  const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+
+  const unsub = onSnapshot(q, async (snap) => {
+    const updatedChats = await Promise.all(
+      snap.docs.map(async (docSnap) => {
+        const chat = { id: docSnap.id, ...docSnap.data() };
+        const otherId = chat.participants.find(p => p !== user.uid);
+
+        // Get other user's profile
+        let otherUserData = { name: 'Unknown', profilePicture: null };
+        try {
+          const userSnap = await getDoc(doc(db, 'users', otherId));
+          if (userSnap.exists()) {
+            otherUserData = userSnap.data();
+          }
+        } catch (err) {
+          console.error("User fetch error:", err.message);
+        }
+
+        // Count unseen messages
+        let newMessages = 0;
+        try {
+          const messagesSnap = await getDocs(collection(db, 'chats', docSnap.id, 'messages'));
+          newMessages = messagesSnap.docs.filter(doc =>
+            doc.data().senderId !== user.uid && !doc.data().seen
+          ).length;
+        } catch (err) {
+          console.error("Message count error:", err.message);
+        }
+
+        return {
+          ...chat,
+          otherUserName: otherUserData.name,
+          otherUserProfile: otherUserData.profilePicture || null,
+          chatDocId: docSnap.id,
+          newMessages
+        };
+      })
+    );
+
+    setChats(updatedChats);
+
+    // Update total unseen message count for the tab
+    const totalUnseen = updatedChats.reduce((sum, c) => sum + c.newMessages, 0);
+    setUnseenMessages(totalUnseen);
+  });
+
+  return () => unsub();
+}, []);
+
+
+
 const [invoices, setInvoices] = useState([]);
 const [calculatedCost, setCalculatedCost] = useState(0);
 const [openFarmerDialog, setOpenFarmerDialog] = useState(false);
+const [unseenMessages, setUnseenMessages] = useState(0);
 const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); 
 
 const updateProcessingCost = (riceType, quantity) => {
@@ -1748,8 +1807,38 @@ const handleCashOption = async (inspection) => {
 
 
 
+const initiateChatWithFarmer = async (farmerId) => {
+  const middlemanId = auth.currentUser?.uid;
+  if (!middlemanId) return;
 
+  const q = query(
+    collection(db, 'chats'),
+    where('participants', 'in', [[middlemanId, farmerId], [farmerId, middlemanId]])
+  );
 
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    // Chat exists, open it
+    const chatId = snapshot.docs[0].id;
+    setTab(8);  // Assuming tab 3 is the "Messages" tab
+    setSelectedChatId(chatId);
+  } else {
+    // No chat exists, create new
+    const docRef = await addDoc(collection(db, 'chats'), {
+      participants: [middlemanId, farmerId],
+      createdAt: serverTimestamp()
+    });
+    setTab(8);  // Messages tab
+    setSelectedChatId(docRef.id);
+  }
+};
+
+useEffect(() => {
+  const unsub = auth.onAuthStateChanged(user => {
+    if (!user) setSelectedChatId(null);
+  });
+  return () => unsub();
+}, []);
 
 
 
@@ -1817,6 +1906,12 @@ const handleCashOption = async (inspection) => {
   <Tab label="Find Mills" />
   <Tab label="Track Processing" />
   <Tab label="Invoices" />
+  <Tab label={
+  <Badge badgeContent={unseenMessages} color="error">
+    Messages
+  </Badge>
+} />
+
 </Tabs>
 
 
@@ -2041,6 +2136,10 @@ const handleCashOption = async (inspection) => {
     <PersonIcon fontSize="small" />
   </IconButton>
 </Tooltip>
+
+<Button onClick={() => initiateChatWithFarmer(harvest.farmerId)}>Message Farmer</Button>
+
+
 
 
                 <Button
@@ -2920,6 +3019,76 @@ const handleCashOption = async (inspection) => {
 
 
 
+{tab === 8 && (
+  <Box sx={{ p: 2 }}>
+    {!selectedChatId ? (
+      <Paper elevation={3} sx={{ p: 2, borderRadius: 3 }}>
+        <Typography variant="h6" gutterBottom>Messages</Typography>
+
+        {chats.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            No chats yet. Message a farmer from a harvest card to begin.
+          </Typography>
+        ) : (
+          chats.map(chat => {
+            const otherId = chat.participants.find(p => p !== auth.currentUser?.uid);
+            return (
+              <Box
+                key={chat.id}
+                onClick={() => setSelectedChatId(chat.id)}
+                sx={{
+                  p: 2,
+                  my: 1,
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  backgroundColor: '#f5f5f5',
+                  '&:hover': {
+                    backgroundColor: '#e0e0e0'
+                  },
+                  transition: '0.2s ease'
+                }}
+              >
+             <ListItem button onClick={() => setSelectedChatId(chat.id)}>
+  <Avatar src={chat.otherUserProfile}>
+    {!chat.otherUserProfile && chat.otherUserName?.[0]}
+  </Avatar>
+  <ListItemText
+    primary={
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <span>{chat.otherUserName}</span>
+        {chat.newMessages > 0 && (
+          <Badge badgeContent={chat.newMessages} color="error" />
+        )}
+      </Box>
+    }
+  />
+</ListItem>
+
+              </Box>
+            );
+          })
+        )}
+      </Paper>
+    ) : (
+      <Box>
+        <ChatBox chatId={selectedChatId} />
+        <Box textAlign="center" mt={2}>
+          <Button
+            variant="outlined"
+            onClick={() => setSelectedChatId(null)}
+            sx={{ mt: 1 }}
+          >
+            Back to Messages
+          </Button>
+        </Box>
+      </Box>
+    )}
+  </Box>
+)}
+
+
+
+
 
 
 
@@ -3044,11 +3213,7 @@ const handleCashOption = async (inspection) => {
     {inspectionSnack.message}
   </Alert>
 </Snackbar>
-<Box textAlign="center" mt={4}>
-  <Button variant="outlined" color="secondary" onClick={handleLogout}>
-    Logout
-  </Button>
-</Box>
+
 
 <Dialog
   open={openFarmerDialog}
