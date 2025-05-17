@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Box, Paper, TextField, IconButton, Typography, Avatar, useMediaQuery
+  Box, Paper, TextField, IconButton, Typography, Avatar, useMediaQuery, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tooltip
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
@@ -11,6 +11,18 @@ import {
 } from 'firebase/firestore';
 import moment from 'moment';
 import { motion } from 'framer-motion';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { Menu, MenuItem } from '@mui/material';
+import MicIcon from '@mui/icons-material/Mic';
+import WaveSurfer from 'wavesurfer.js';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
+
+
+
+
+
+
 
 
 const ChatBox = ({ chatId, onBack }) => {
@@ -19,7 +31,29 @@ const ChatBox = ({ chatId, onBack }) => {
 const [typingUserName, setTypingUserName] = useState('');
 const typingTimeout = useRef(null);
   const [newMsg, setNewMsg] = useState('');
+  const [playingAudios, setPlayingAudios] = useState({});
   const [showPicker, setShowPicker] = useState(false);
+const [viewingUserId, setViewingUserId] = useState(null);
+const [startX, setStartX] = useState(null);
+const [isCancelling, setIsCancelling] = useState(false);
+const [anchorEl, setAnchorEl] = useState(null);
+const [menuMessageId, setMenuMessageId] = useState(null);
+const open = Boolean(anchorEl);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const waveformRefs = useRef({});
+  const [isRecording, setIsRecording] = useState(false);
+const [mediaRecorder, setMediaRecorder] = useState(null);
+const [recordedChunks, setRecordedChunks] = useState([]);
+const [recordingStartTime, setRecordingStartTime] = useState(null);
+const [recordingElapsed, setRecordingElapsed] = useState(0);
+const waveformRef = useRef(null);
+const canvasRef = useRef(null);
+const [recordingStartX, setRecordingStartX] = useState(null);
+const [canceled, setCanceled] = useState(false);
+const recordingTimerRef = useRef(null);
+const [editedText, setEditedText] = useState('');
+const [chatPartnerData, setChatPartnerData] = useState(null);
   const [userCache, setUserCache] = useState({});
   const user = auth.currentUser;
   const endRef = useRef();
@@ -41,6 +75,12 @@ const typingTimeout = useRef(null);
       if (snap.exists()) {
         const data = snap.data();
         setUserCache(prev => ({ ...prev, [uid]: data }));
+
+      if (uid !== currentUser?.uid) {
+    setChatPartnerData(data);
+  }
+
+
         return data;
       }
     } catch (err) {
@@ -190,9 +230,20 @@ const handleTypingStatus = (isTyping) => {
 
       <Box display="flex" alignItems="flex-end">
         {!isMine && (
-          <Avatar sx={{ mr: 1 }} src={avatarSrc}>
-            {!avatarSrc && fallbackLetter}
-          </Avatar>
+          <Tooltip title="View Profile" arrow>
+  <Avatar
+    sx={{ mr: 1, cursor: 'pointer' }}
+    src={avatarSrc}
+    onClick={() => {
+      setViewingUserId(msg.senderId);
+      setProfileOpen(true);
+    }}
+  >
+    {!avatarSrc && fallbackLetter}
+  </Avatar>
+</Tooltip>
+
+
         )}
        <Box
   sx={{
@@ -206,7 +257,107 @@ const handleTypingStatus = (isTyping) => {
   }}
 >
 
-          <Typography variant="body2">{msg.text}</Typography>
+         {msg.deleted ? (
+  <Typography variant="body2" fontStyle="italic" color="text.secondary">
+    Message deleted
+  </Typography>
+) : msg.type === 'audio' ? (
+  <Box display="flex" alignItems="center" gap={1}>
+    <IconButton
+      size="small"
+      onClick={() => {
+        const wave = waveformRefs.current[msg.id];
+        if (wave) {
+          wave.playPause();
+
+          const isPlaying = wave.isPlaying();
+          setPlayingAudios(prev => ({
+            ...prev,
+            [msg.id]: !prev[msg.id]  // toggle
+          }));
+        }
+      }}
+    >
+      {playingAudios[msg.id] ? <PauseIcon /> : <PlayArrowIcon />}
+    </IconButton>
+
+    <Box sx={{ flex: 1 }}>
+      <div
+        id={`waveform-${msg.id}`}
+        ref={(ref) => {
+          if (!ref || waveformRefs.current[msg.id]) return;
+
+          const wave = WaveSurfer.create({
+            container: ref,
+            waveColor: '#90caf9',
+            progressColor: '#1976d2',
+            height: 40,
+            responsive: true
+          });
+
+          wave.load(msg.audioUrl);
+
+          waveformRefs.current[msg.id] = wave;
+
+          // Handle playback end
+          wave.on('finish', () => {
+            setPlayingAudios(prev => ({
+              ...prev,
+              [msg.id]: false
+            }));
+          });
+        }}
+      />
+    </Box>
+  </Box>
+) : editingMessageId === msg.id ? (
+  <Box display="flex" alignItems="center" gap={1}>
+    <TextField
+      size="small"
+      fullWidth
+      value={editedText}
+      onChange={(e) => setEditedText(e.target.value)}
+      onKeyDown={async (e) => {
+        if (e.key === 'Enter') {
+          await updateDoc(doc(db, 'chats', chatId, 'messages', msg.id), {
+            text: editedText,
+            edited: true
+          });
+          setEditingMessageId(null);
+        } else if (e.key === 'Escape') {
+          setEditingMessageId(null);
+        }
+      }}
+    />
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={async () => {
+        await updateDoc(doc(db, 'chats', chatId, 'messages', msg.id), {
+          text: editedText,
+          edited: true
+        });
+        setEditingMessageId(null);
+      }}
+    >
+      Save
+    </Button>
+  </Box>
+) : (
+  <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+    {msg.text}
+    {msg.edited && (
+      <Typography
+        component="span"
+        variant="caption"
+        sx={{ ml: 1, fontStyle: 'italic', color: 'gray' }}
+      >
+        (edited)
+      </Typography>
+    )}
+  </Typography>
+)}
+
           <Typography variant="caption" display="block" textAlign="right">
   {msg.timestamp ? moment(msg.timestamp.toDate()).fromNow() : '...'}
   {isMine && (
@@ -218,10 +369,37 @@ const handleTypingStatus = (isTyping) => {
 
         </Box>
         {isMine && (
-          <Avatar sx={{ ml: 1 }} src={userCache[user.uid]?.profilePicture || null}>
-            {!userCache[user.uid]?.profilePicture && (user.displayName?.[0] || user.uid[0])}
-          </Avatar>
-        )}
+  <Box display="flex" alignItems="center" gap={0.5}>
+    {/* Three Dots Menu */}
+    <IconButton
+      size="small"
+      onClick={(e) => {
+        setAnchorEl(e.currentTarget);
+        setMenuMessageId(msg.id);
+      }}
+    >
+      <MoreVertIcon fontSize="small" />
+    </IconButton>
+
+    {/* Avatar with View Profile Tooltip */}
+    <Tooltip title="View Profile" arrow>
+      <Avatar
+        sx={{ ml: 0.5, cursor: 'pointer' }}
+        src={userCache[currentUser?.uid]?.profilePicture || null}
+        onClick={() => {
+          setViewingUserId(currentUser?.uid);
+          setProfileOpen(true);
+        }}
+      >
+        {!userCache[currentUser?.uid]?.profilePicture &&
+          (userCache[currentUser?.uid]?.name?.[0] ||
+            currentUser?.displayName?.[0] ||
+            currentUser?.uid?.[0])}
+      </Avatar>
+    </Tooltip>
+  </Box>
+)}
+
       </Box>
     </Box>
   );
@@ -252,6 +430,39 @@ const handleTypingStatus = (isTyping) => {
           <EmojiPicker onEmojiClick={handleEmojiClick} height={350} />
         </Box>
       )}
+      {isRecording && (
+  <Typography color="error" fontWeight={600} mt={1}>
+    🔴 Recording... {recordingElapsed}s
+  </Typography>
+)}
+
+{isRecording && (
+  <Box mt={1} display="flex" justifyContent="center">
+    <canvas
+      ref={canvasRef}
+      width="300"
+      height="50"
+      style={{
+        background: '#f5f5f5',
+        borderRadius: 6,
+        boxShadow: 'inset 0 0 3px rgba(0,0,0,0.2)'
+      }}
+    />
+  </Box>
+)}
+
+{isRecording && (
+  <Typography
+    variant="body2"
+    color={isCancelling ? 'error' : 'textSecondary'}
+    textAlign="center"
+    mt={1}
+  >
+    {isCancelling ? 'Release to cancel recording' : 'Slide left to cancel'}
+  </Typography>
+)}
+
+
 
       <Box display="flex" alignItems="center" mt={2} gap={1}>
         <IconButton onClick={() => setShowPicker(!showPicker)}>
@@ -270,7 +481,199 @@ const handleTypingStatus = (isTyping) => {
         <IconButton onClick={sendMessage} color="primary">
           <SendIcon />
         </IconButton>
+       <Box
+  onTouchStart={(e) => setRecordingStartX(e.touches[0].clientX)}
+  onTouchMove={(e) => {
+    const moveX = e.touches[0].clientX;
+    if (recordingStartX && moveX < recordingStartX - 80) {
+      setIsCancelling(true);
+      mediaRecorder?.stop();
+      setIsRecording(false);
+      setCanceled(true);
+      clearInterval(recordingTimerRef.current);
+    }
+  }}
+  onTouchEnd={() => setRecordingStartX(null)}
+  onMouseDown={(e) => setRecordingStartX(e.clientX)}
+  onMouseMove={(e) => {
+    if (recordingStartX && e.buttons === 1 && e.clientX < recordingStartX - 80) {
+      setIsCancelling(true);
+      mediaRecorder?.stop();
+      setIsRecording(false);
+      setCanceled(true);
+      clearInterval(recordingTimerRef.current);
+    }
+  }}
+  onMouseUp={() => setRecordingStartX(null)}
+>
+  <IconButton
+    color={isRecording ? 'error' : 'default'}
+    onClick={async () => {
+      if (isRecording) {
+        mediaRecorder?.stop();
+        setIsRecording(false);
+        clearInterval(recordingTimerRef.current);
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        await audioContext.resume();
+
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+
+        const drawWaveform = () => {
+          if (!ctx) return;
+          requestAnimationFrame(drawWaveform);
+
+          analyser.getByteFrequencyData(dataArray);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#1976d2';
+          const barWidth = (canvas.width / bufferLength) * 1.5;
+
+          for (let i = 0; i < bufferLength; i++) {
+            const x = i * barWidth;
+            const height = dataArray[i] / 2;
+            ctx.fillRect(x, canvas.height - height, barWidth * 0.8, height);
+          }
+        };
+        drawWaveform();
+
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+
+        recorder.onstop = async () => {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+
+          if (canceled) {
+            setCanceled(false);
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append('file', blob);
+          formData.append('upload_preset', 'ml_default');
+
+          const res = await fetch('https://api.cloudinary.com/v1_1/dfdot1hfz/video/upload', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await res.json();
+          const audioUrl = data.secure_url;
+
+          await addDoc(collection(db, 'chats', chatId, 'messages'), {
+            senderId: currentUser.uid,
+            type: 'audio',
+            audioUrl,
+            timestamp: serverTimestamp(),
+            seen: false
+          });
+        };
+
+        recorder.start();
+        setMediaRecorder(recorder);
+        setIsRecording(true);
+        setIsCancelling(false);
+        setRecordedChunks([]);
+        const start = Date.now();
+        setRecordingStartTime(start);
+        setRecordingElapsed(0);
+
+        recordingTimerRef.current = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - start) / 1000);
+          setRecordingElapsed(elapsed);
+        }, 1000);
+      } catch (err) {
+        alert("🎙 Microphone access denied or failed: " + err.message);
+        console.error(err);
+      }
+    }}
+  >
+    <MicIcon />
+  </IconButton>
+</Box>
+
+
       </Box>
+   <Dialog open={profileOpen} onClose={() => setProfileOpen(false)}>
+  <DialogTitle>User Profile</DialogTitle>
+  <DialogContent>
+    {viewingUserId ? (
+      <Box display="flex" flexDirection="column" alignItems="center" gap={2} mt={1}>
+        <Avatar
+          src={userCache[viewingUserId]?.profilePicture}
+          sx={{ width: 80, height: 80 }}
+        >
+          {!userCache[viewingUserId]?.profilePicture && userCache[viewingUserId]?.name?.[0]}
+        </Avatar>
+        <Typography variant="h6">
+          {userCache[viewingUserId]?.name || 'Unknown'}
+        </Typography>
+        <Typography variant="body2" color="primary" fontWeight={500}>
+  Role: {userCache[viewingUserId]?.accountType || 'Unknown'}
+</Typography>
+
+        <Typography variant="body2" color="textSecondary">
+          Email: {userCache[viewingUserId]?.email || 'Not available'}
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          Phone: {userCache[viewingUserId]?.phone || 'Not available'}
+        </Typography>
+      </Box>
+    ) : (
+      <Typography>Loading...</Typography>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setProfileOpen(false)}>Close</Button>
+  </DialogActions>
+</Dialog>
+
+
+<Menu
+  anchorEl={anchorEl}
+  open={open}
+  onClose={() => {
+    setAnchorEl(null);
+    setMenuMessageId(null);
+  }}
+>
+  <MenuItem
+    onClick={() => {
+      const msg = messages.find(m => m.id === menuMessageId);
+      setEditedText(msg.text);
+      setEditingMessageId(menuMessageId);
+      setAnchorEl(null);
+    }}
+  >
+    Edit
+  </MenuItem>
+  <MenuItem
+    onClick={async () => {
+      await updateDoc(doc(db, 'chats', chatId, 'messages', menuMessageId), {
+        deleted: true
+      });
+      setAnchorEl(null);
+      setMenuMessageId(null);
+    }}
+  >
+    Delete
+  </MenuItem>
+</Menu>
+
+
     </Paper>
   );
 };
