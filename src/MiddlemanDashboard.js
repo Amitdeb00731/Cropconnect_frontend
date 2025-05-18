@@ -53,6 +53,8 @@ import ChatFeatureSection from './ChatFeatureSection';
 import MillMapView from './MillMapView';
 import HarvestMapView from './HarvestMapView';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import JourneyMap from './JourneyMap';
+
 
 
 
@@ -126,6 +128,7 @@ const tabLabels = [
 ];
 const [proposals, setProposals] = useState([]);
 const [selectedFarmer, setSelectedFarmer] = useState(null);
+const [journeyDestination, setJourneyDestination] = useState(null);
 const [selectedChatId, setSelectedChatId] = useState(null);
 const [chats, setChats] = useState([]);
 
@@ -2001,18 +2004,20 @@ useEffect(() => {
             overflow: 'hidden',
           }}
         >
-          <HarvestMapView
-            currentLocation={currentLocation}
-            harvests={harvests.filter((h) => {
-              const dist = haversineDistance(
-                currentLocation.latitude,
-                currentLocation.longitude,
-                h.latitude,
-                h.longitude
-              );
-              return dist <= distanceRadius;
-            })}
-          />
+         <HarvestMapView
+  currentLocation={currentLocation}
+  harvests={harvests.filter((h) => {
+    const dist = haversineDistance(
+      currentLocation.latitude,
+      currentLocation.longitude,
+      h.latitude,
+      h.longitude
+    );
+    return dist <= distanceRadius;
+  })}
+  onSelectJourney={(h) => setJourneyDestination({ lat: h.latitude, lng: h.longitude })}
+/>
+
         </Box>
       )}
     </Container>
@@ -3498,6 +3503,12 @@ useEffect(() => {
   </List>
 </Drawer>
 
+{journeyDestination && (
+  <JourneyMap
+    destination={journeyDestination}
+    onStop={() => setJourneyDestination(null)}
+  />
+)}
 
 
     </Container>

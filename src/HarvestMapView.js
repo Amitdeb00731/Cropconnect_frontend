@@ -1,5 +1,5 @@
 // HarvestMapView.js
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip
 } from 'react-leaflet';
@@ -10,6 +10,7 @@ const harvestIcon = new L.Icon({
   iconUrl: harvestIconImg,
   iconSize: [30, 30],
 });
+
 
 
 const currentIcon = new L.Icon({
@@ -28,7 +29,8 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
-export default function HarvestMapView({ currentLocation, harvests }) {
+export default function HarvestMapView({ currentLocation, harvests, onSelectJourney }) {
+  const [selectedHarvest, setSelectedHarvest] = useState(null);
   if (!currentLocation) return <p>Fetching location...</p>;
 
   return (
@@ -61,6 +63,7 @@ export default function HarvestMapView({ currentLocation, harvests }) {
                 {h.farmLocation || 'No address'}<br />
                 Remaining: {h.remainingQuantity} {h.quantityUnit || 'Kg'}<br />
                 Distance: {distance} km
+                <button onClick={() => onSelectJourney(h)}>Start Journey</button>
               </Popup>
             </Marker>
             <Polyline positions={linePositions} color="green">
