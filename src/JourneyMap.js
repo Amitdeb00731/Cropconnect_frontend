@@ -59,8 +59,8 @@ export default function JourneyMap({ destination, onStop }) {
     if (!window.google?.maps) {
       const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`;
-      script.async = true;
-      script.defer = true;
+      script.setAttribute('async', '');
+      script.setAttribute('defer', '');
       script.onload = initMap;
       document.body.appendChild(script);
     } else {
@@ -93,7 +93,7 @@ export default function JourneyMap({ destination, onStop }) {
         }
 
         if (!markerRef.current && map) {
-          markerRef.current = new window.google.maps.Marker({
+          markerRef.current = new google.maps.marker.AdvancedMarkerElement({
             position: current,
             map,
             icon: {
@@ -172,81 +172,85 @@ export default function JourneyMap({ destination, onStop }) {
 
       {/* ETA & Distance Panel */}
       <div style={{
-        position: 'absolute',
-        top: '10px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        color: 'white',
-        padding: '10px 20px',
-        borderRadius: '10px',
-        display: 'flex',
-        gap: '20px',
-        fontSize: '14px',
-        zIndex: 1000
-      }}>
+      position: 'absolute',
+      top: '10px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      color: 'white',
+      padding: '8px 16px',
+      borderRadius: '10px',
+      display: 'flex',
+      gap: '16px',
+      fontSize: '14px',
+      zIndex: 1000,
+      flexWrap: 'wrap'
+    }}>
         <span>ETA: {eta || 'Loading...'}</span>
         <span>Distance: {distance || 'Loading...'}</span>
       </div>
 
       {/* Turn-by-turn Instructions */}
       <div id="instructions-panel" style={{
-        position: 'absolute',
-        right: 0,
-        top: '70px',
-        bottom: '0',
-        width: '300px',
-        overflowY: 'auto',
-        background: 'white',
-        zIndex: 1000,
-        padding: '10px'
-      }} />
+      position: 'absolute',
+      right: '0',
+      top: '70px',
+      bottom: '0',
+      width: '300px',
+      maxWidth: '90vw',
+      overflowY: 'auto',
+      background: 'white',
+      zIndex: 1000,
+      padding: '10px',
+      boxShadow: '0 0 10px rgba(0,0,0,0.2)'
+    }} />
+    <div style={{
+      position: 'absolute',
+      bottom: '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '12px',
+      zIndex: 1000
+    }}></div>
 
       {/* 3D Toggle Button */}
-      <button onClick={toggle3D} style={{
-        position: 'absolute',
-        bottom: '90px',
-        left: '20px',
+     <button onClick={toggle3D} style={{
         backgroundColor: '#0a74da',
         color: 'white',
         border: 'none',
         padding: '10px 14px',
         borderRadius: '8px',
-        fontWeight: 'bold'
+        fontWeight: 'bold',
+        width: '160px'
       }}>
         {is3D ? 'Disable 3D' : 'Enable 3D'}
       </button>
 
-      <button
-  onClick={() => window.speechSynthesis.cancel()}
-  style={{
-    position: 'absolute',
-    bottom: '160px',
-    left: '20px',
-    backgroundColor: '#555',
-    color: 'white',
-    border: 'none',
-    padding: '10px 14px',
-    borderRadius: '8px',
-    fontWeight: 'bold',
-  }}
->
-  Mute Voice
-</button>
+     <button onClick={() => window.speechSynthesis.cancel()} style={{
+        backgroundColor: '#555',
+        color: 'white',
+        border: 'none',
+        padding: '10px 14px',
+        borderRadius: '8px',
+        fontWeight: 'bold',
+        width: '160px'
+      }}>
+        Mute Voice
+      </button>
 
       {/* Stop Button */}
-      <button onClick={stopJourney} style={{
-        position: 'absolute',
-        bottom: '40px',
-        left: '50%',
-        transform: 'translateX(-50%)',
+       <button onClick={stopJourney} style={{
         padding: '12px 24px',
         background: 'red',
         color: 'white',
         border: 'none',
         borderRadius: '12px',
         fontWeight: 'bold',
-        fontSize: '16px'
+        fontSize: '16px',
+        width: '160px'
       }}>
         Stop Journey
       </button>
