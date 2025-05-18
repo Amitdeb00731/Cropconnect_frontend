@@ -58,7 +58,7 @@ export default function JourneyMap({ destination, onStop }) {
 
     if (!window.google?.maps) {
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyC3Z3-dst23ovGuNx3gkVWuQALGSHaI8jA`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`;
       script.async = true;
       script.defer = true;
       script.onload = initMap;
