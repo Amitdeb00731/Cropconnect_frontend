@@ -1,32 +1,55 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+
+let lastSpoken = '';
+
+function speakDirection(text) {
+  if (!text || text === lastSpoken) return;
+
+  const utterance = new SpeechSynthesisUtterance(stripHtml(text));
+  utterance.lang = 'en-US';
+  utterance.pitch = 1;
+  utterance.rate = 1;
+  window.speechSynthesis.speak(utterance);
+
+  lastSpoken = text;
+}
+
+function stripHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+
 export default function JourneyMap({ destination, onStop }) {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
-  const [watchId, setWatchId] = useState(null);
   const [directionsRenderer, setDirectionsRenderer] = useState(null);
   const [eta, setEta] = useState('');
   const [distance, setDistance] = useState('');
   const [is3D, setIs3D] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(null);
   const markerRef = useRef(null);
-
-
+  const [watchId, setWatchId] = useState(null);
 
   useEffect(() => {
     const initMap = () => {
       const mapInstance = new window.google.maps.Map(mapRef.current, {
-        zoom: 15,
+        zoom: 18,
         tilt: 0,
         heading: 0,
         mapTypeId: 'terrain',
         fullscreenControl: false,
         streetViewControl: false,
+        gestureHandling: 'greedy',
       });
 
       const dirRenderer = new window.google.maps.DirectionsRenderer({
         map: mapInstance,
         suppressMarkers: false,
+        preserveViewport: true,
+        panel: document.getElementById('instructions-panel'),
       });
 
       setMap(mapInstance);
@@ -61,39 +84,53 @@ export default function JourneyMap({ destination, onStop }) {
           lng: position.coords.longitude,
         };
         setCurrentPosition(current);
+
         if (map) {
+          const bounds = map.getBounds();
+          if (!bounds || !bounds.contains(current)) {
             map.panTo(current);
+          }
+        }
 
-  if (!markerRef.current) {
-    markerRef.current = new window.google.maps.Marker({
-      position: current,
-      map: map,
-      icon: {
-        url: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
-        scaledSize: new window.google.maps.Size(30, 30),
-      },
-      title: 'Your Location',
-    });
-  } else {
-    markerRef.current.setPosition(current);
-  }
-}
-
-
+        if (!markerRef.current && map) {
+          markerRef.current = new window.google.maps.Marker({
+            position: current,
+            map,
+            icon: {
+              url: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
+              scaledSize: new window.google.maps.Size(30, 30),
+            },
+            title: 'Your Location',
+          });
+        } else {
+          markerRef.current.setPosition(current);
+        }
 
         directionsService.route(
           {
             origin: current,
             destination,
             travelMode: 'DRIVING',
+            provideRouteAlternatives: true,
           },
           (result, status) => {
             if (status === 'OK') {
-              directionsRenderer.setDirections(result);
+              if (status === 'OK') {
+  directionsRenderer.setDirections(result);
 
-              const leg = result.routes[0].legs[0];
-              setEta(leg.duration.text);
-              setDistance(leg.distance.text);
+  const leg = result.routes[0].legs[0];
+  setEta(leg.duration.text);
+  setDistance(leg.distance.text);
+
+  const steps = leg.steps;
+  const currentStep = steps[0]; // We'll detect the closest one dynamically
+  const nextInstruction = steps[1]?.instructions || '';
+
+  speakDirection(nextInstruction); // 🔊 Speak next turn
+}
+
+            } else {
+              console.warn('Route error:', status);
             }
           }
         );
@@ -106,31 +143,34 @@ export default function JourneyMap({ destination, onStop }) {
   }, [map, destination]);
 
   const toggle3D = () => {
-  if (!map) return;
+    if (!map) return;
 
-  if (!is3D) {
-    map.setMapTypeId('satellite');
-    map.setZoom(18); // Must be zoomed in
-    setTimeout(() => {
-      map.setTilt(45);
-      map.setHeading(90); // Optional
-    }, 500); // Slight delay to allow map to re-render
-  } else {
-    map.setTilt(0);
-    map.setHeading(0);
-    map.setMapTypeId('terrain'); // or 'roadmap'
-  }
+    if (!is3D) {
+      map.setMapTypeId('satellite');
+      map.setZoom(18);
+      setTimeout(() => {
+        map.setTilt(45);
+        map.setHeading(90);
+      }, 500);
+    } else {
+      map.setTilt(0);
+      map.setHeading(0);
+      map.setMapTypeId('terrain');
+    }
 
-  setIs3D(!is3D);
-};
+    setIs3D(!is3D);
+  };
 
-
+  const stopJourney = () => {
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+    onStop();
+  };
 
   return (
     <div style={{ height: '100vh', width: '100vw', position: 'fixed', top: 0, left: 0, zIndex: 9999 }}>
       <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
-     
-      {/* Tracking Panel */}
+
+      {/* ETA & Distance Panel */}
       <div style={{
         position: 'absolute',
         top: '10px',
@@ -149,44 +189,65 @@ export default function JourneyMap({ destination, onStop }) {
         <span>Distance: {distance || 'Loading...'}</span>
       </div>
 
-      {/* 3D Toggle */}
-      <button
-        onClick={toggle3D}
-        style={{
-          position: 'absolute',
-          bottom: '90px',
-          right: '20px',
-          backgroundColor: '#0a74da',
-          color: 'white',
-          border: 'none',
-          padding: '10px 14px',
-          borderRadius: '8px',
-          fontWeight: 'bold',
-        }}
-      >
+      {/* Turn-by-turn Instructions */}
+      <div id="instructions-panel" style={{
+        position: 'absolute',
+        right: 0,
+        top: '70px',
+        bottom: '0',
+        width: '300px',
+        overflowY: 'auto',
+        background: 'white',
+        zIndex: 1000,
+        padding: '10px'
+      }} />
+
+      {/* 3D Toggle Button */}
+      <button onClick={toggle3D} style={{
+        position: 'absolute',
+        bottom: '90px',
+        left: '20px',
+        backgroundColor: '#0a74da',
+        color: 'white',
+        border: 'none',
+        padding: '10px 14px',
+        borderRadius: '8px',
+        fontWeight: 'bold'
+      }}>
         {is3D ? 'Disable 3D' : 'Enable 3D'}
       </button>
 
-      {/* Stop Journey */}
       <button
-        onClick={() => {
-          if (watchId) navigator.geolocation.clearWatch(watchId);
-          onStop();
-        }}
-        style={{
-          position: 'absolute',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          padding: '12px 24px',
-          background: 'red',
-          color: 'white',
-          border: 'none',
-          borderRadius: '12px',
-          fontWeight: 'bold',
-          fontSize: '16px'
-        }}
-      >
+  onClick={() => window.speechSynthesis.cancel()}
+  style={{
+    position: 'absolute',
+    bottom: '160px',
+    left: '20px',
+    backgroundColor: '#555',
+    color: 'white',
+    border: 'none',
+    padding: '10px 14px',
+    borderRadius: '8px',
+    fontWeight: 'bold',
+  }}
+>
+  Mute Voice
+</button>
+
+      {/* Stop Button */}
+      <button onClick={stopJourney} style={{
+        position: 'absolute',
+        bottom: '40px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        padding: '12px 24px',
+        background: 'red',
+        color: 'white',
+        border: 'none',
+        borderRadius: '12px',
+        fontWeight: 'bold',
+        fontSize: '16px'
+      }}>
         Stop Journey
       </button>
     </div>
