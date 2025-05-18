@@ -51,6 +51,8 @@ import MiddlemanDealTimeline from './MiddlemanDealTimeline';
 import MiddlemanTipsAccordion from './MiddlemanTipsAccordion';
 import ChatFeatureSection from './ChatFeatureSection';
 import MillMapView from './MillMapView';
+import HarvestMapView from './HarvestMapView';
+
 
 
 
@@ -168,6 +170,7 @@ useEffect(() => {
 
 const [invoices, setInvoices] = useState([]);
 const [calculatedCost, setCalculatedCost] = useState(0);
+const [showHarvestMap, setShowHarvestMap] = useState(false);
 const [showMap, setShowMap] = useState(true);
 const [openFarmerDialog, setOpenFarmerDialog] = useState(false);
 const [unseenMessages, setUnseenMessages] = useState(0);
@@ -1961,6 +1964,36 @@ useEffect(() => {
       )}
 
       {/* Harvest Cards */}
+      <Box textAlign="center" mb={2}>
+  <Button variant="outlined" onClick={() => setShowHarvestMap(!showHarvestMap)}>
+    {showHarvestMap ? 'Hide Nearby Harvests Map' : 'Show Nearby Harvests Map'}
+  </Button>
+</Box>
+
+{showHarvestMap && currentLocation && (
+  <Box
+    sx={{
+      height: { xs: 300, sm: 400, md: 500 },
+      mb: 3,
+      borderRadius: 3,
+      overflow: 'hidden',
+    }}
+  >
+    <HarvestMapView
+      currentLocation={currentLocation}
+      harvests={harvests.filter((h) => {
+        const dist = haversineDistance(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          h.latitude,
+          h.longitude
+        );
+        return dist <= distanceRadius;
+      })}
+    />
+  </Box>
+)}
+
       {tab === 1 && (
       <Grid container spacing={3}>
     <Grid container spacing={2} mb={3}>
