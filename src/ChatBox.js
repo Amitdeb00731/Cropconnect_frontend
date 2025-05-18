@@ -17,6 +17,8 @@ import MicIcon from '@mui/icons-material/Mic';
 import WaveSurfer from 'wavesurfer.js';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
+import PhotoCamera from '@mui/icons-material/PhotoCamera';
+
 
 
 
@@ -33,6 +35,8 @@ const typingTimeout = useRef(null);
   const [newMsg, setNewMsg] = useState('');
   const [playingAudios, setPlayingAudios] = useState({});
   const [showPicker, setShowPicker] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+const fileInputRef = useRef(null);
 const [viewingUserId, setViewingUserId] = useState(null);
 const [startX, setStartX] = useState(null);
 const [isCancelling, setIsCancelling] = useState(false);
@@ -142,6 +146,44 @@ const sendMessage = async () => {
     console.error("❌ Failed to send message:", err);
   }
 };
+
+const uploadImageToCloudinary = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'ml_default');
+
+  const res = await fetch('https://api.cloudinary.com/v1_1/dfdot1hfz/image/upload', {
+    method: 'POST',
+    body: formData
+  });
+
+  const data = await res.json();
+  return data.secure_url;
+};
+
+const handleImageUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentUser) return;
+
+  setUploadingImage(true);
+
+  try {
+    const imageUrl = await uploadImageToCloudinary(file);
+    await addDoc(collection(db, 'chats', chatId, 'messages'), {
+      senderId: currentUser.uid,
+      type: 'image',
+      imageUrl,
+      timestamp: serverTimestamp(),
+      seen: false
+    });
+  } catch (err) {
+    console.error("❌ Image upload failed:", err);
+  } finally {
+    setUploadingImage(false);
+  }
+};
+
+
 
   const handleEmojiClick = (emojiData) => {
     setNewMsg(prev => prev + emojiData.emoji);
@@ -261,6 +303,17 @@ const handleTypingStatus = (isTyping) => {
   <Typography variant="body2" fontStyle="italic" color="text.secondary">
     Message deleted
   </Typography>
+) : msg.type === 'image' ? (
+  <img
+    src={msg.imageUrl}
+    alt="Sent Image"
+    style={{
+      maxWidth: '100%',
+      borderRadius: 8,
+      cursor: 'pointer'
+    }}
+    onClick={() => window.open(msg.imageUrl, '_blank')}
+  />
 ) : msg.type === 'audio' ? (
   <Box display="flex" alignItems="center" gap={1}>
     <IconButton
@@ -478,6 +531,29 @@ const handleTypingStatus = (isTyping) => {
   handleTypingStatus(true);
 }}
         />
+
+        <input
+  type="file"
+  accept="image/*"
+  ref={fileInputRef}
+  style={{ display: 'none' }}
+  onChange={handleImageUpload}
+/>
+{uploadingImage && (
+  <Typography variant="caption" color="primary" textAlign="center" mt={1}>
+    Uploading image...
+  </Typography>
+)}
+
+
+<Tooltip title="Send Image">
+  <IconButton onClick={() => fileInputRef.current?.click()}>
+    <PhotoCamera />
+  </IconButton>
+</Tooltip>
+
+
+
         <IconButton onClick={sendMessage} color="primary">
           <SendIcon />
         </IconButton>
