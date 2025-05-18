@@ -247,7 +247,7 @@ export default function JourneyMap({ destination, onStop }) {
   onClick={() => setShowInstructions(prev => !prev)}
   style={{
     position: 'absolute',
-    bottom: showInstructions ? '42vh' : '10px',
+    bottom: showInstructions ? '42vh' : '55px',
     left: '50%',
     transform: 'translateX(-50%)',
     backgroundColor: 'white',
@@ -265,7 +265,7 @@ export default function JourneyMap({ destination, onStop }) {
       {/* Stop Button */}
       <button onClick={stopJourney} style={{
         position: 'absolute',
-        bottom: '40px',
+        bottom: '45px',
         left: '50%',
         transform: 'translateX(-50%)',
         padding: '12px 24px',
