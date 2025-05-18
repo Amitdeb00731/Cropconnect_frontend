@@ -49,6 +49,7 @@ import MiddlemanLandingHero from './MiddlemanLandingHero';
 import MiddlemanQuickActions from './MiddlemanQuickActions';
 import MiddlemanDealTimeline from './MiddlemanDealTimeline';
 import MiddlemanTipsAccordion from './MiddlemanTipsAccordion';
+import ChatFeatureSection from './ChatFeatureSection';
 
 
 
@@ -1943,6 +1944,7 @@ useEffect(() => {
   onProcessing={() => setTab(6)}
   onInvoices={() => setTab(7)}
 />
+<ChatFeatureSection onRedirect={() => setTab(8)} name="Middleman" />
 
 <MiddlemanDealTimeline />
 <MiddlemanTipsAccordion />

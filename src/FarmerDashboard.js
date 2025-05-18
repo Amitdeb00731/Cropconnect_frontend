@@ -44,6 +44,7 @@ import FarmerTipsAccordion from './FarmerTipsAccordion';
 import { fetchWeather } from './weather';
 import Lottie from 'lottie-react';
 import weatherAnimation from './assets/weather.json';
+import ChatFeatureSection from './ChatFeatureSection'; 
 
 
 
@@ -1077,6 +1078,7 @@ useEffect(() => {
   onViewProposals={() => setTab(3)}
   onCheckInventory={() => setTab(4)} // Adjust this if Inventory is a different tab
 />
+<ChatFeatureSection onRedirect={() => setTab(5)} name="Farmer" />
 <FarmerTipsAccordion />
 
 {weather && (
