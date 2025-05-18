@@ -23,6 +23,12 @@ import MillLandingHero from './MillLandingHero';
 import MillQuickActions from './MillQuickActions';
 import MillDealTimeline from './MillDealTimeline';
 import MillTipsAccordion from './MillTipsAccordion';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+
 
 
 
@@ -45,6 +51,13 @@ export default function MillDashboard() {
   const [fetchingLocation, setFetchingLocation] = useState(false);
   const [requests, setRequests] = useState([]);
   const [tab, setTab] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+const tabLabels = [
+  "Home",
+  "Processing Requests",
+  "Under Process",
+  "Pending Lot"
+];
   const [selectedRequest, setSelectedRequest] = useState(null);
 const [openDecisionDialog, setOpenDecisionDialog] = useState(false);
   const navigate = useNavigate();
@@ -373,19 +386,24 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
         <Box component="img" src={logo} alt="App Logo" sx={{ height: 60, mb: 1 }} />
       </Box>
       <TopNavbar title="Mill Dashboard" />
+      <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
          <Tabs
         value={tab}
         onChange={(e, val) => setTab(val)}
         centered
         variant="scrollable"
         scrollButtons="auto"
-        sx={{ mb: 4 }}
+        sx={{ flexGrow: 1 }}
       >
   <Tab label="Home" />      
   <Tab label="Processing Requests" />
   <Tab label="Under Process" />
   <Tab label="Pending Lot" />
 </Tabs>
+<IconButton onClick={() => setDrawerOpen(true)}>
+    <MoreVertIcon />
+  </IconButton>
+</Box>
 
 
 {tab === 0 && (
@@ -763,6 +781,18 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
   />
 )}
 
+<Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+  <List sx={{ width: 250 }}>
+    {tabLabels.map((label, index) => (
+      <ListItem button key={label} onClick={() => {
+        setTab(index);
+        setDrawerOpen(false);
+      }}>
+        <ListItemText primary={label} />
+      </ListItem>
+    ))}
+  </List>
+</Drawer>
 
 
 

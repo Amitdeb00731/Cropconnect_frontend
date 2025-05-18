@@ -52,6 +52,9 @@ import MiddlemanTipsAccordion from './MiddlemanTipsAccordion';
 import ChatFeatureSection from './ChatFeatureSection';
 import MillMapView from './MillMapView';
 import HarvestMapView from './HarvestMapView';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+
+
 
 
 
@@ -109,6 +112,18 @@ const isRiceTypeAcceptedByMill = (mill, riceType) => {
 
 export default function MiddlemanDashboard() {
   const [tab, setTab] = useState(0);
+  const [optiondrawerOpen, setOptionDrawerOpen] = useState(false);
+const tabLabels = [
+  "Home",
+  "Available Harvests",
+  "Proposals Sent",
+  "Inspection Responses",
+  "Inventory",
+  "Find Mills",
+  "Track Processing",
+  "Invoices",
+  "Messages"
+];
 const [proposals, setProposals] = useState([]);
 const [selectedFarmer, setSelectedFarmer] = useState(null);
 const [selectedChatId, setSelectedChatId] = useState(null);
@@ -1878,14 +1893,14 @@ useEffect(() => {
 />
 
 
-
+    <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
      <Tabs
   value={tab}
   onChange={(e, val) => setTab(val)}
   centered
   variant="scrollable"
   scrollButtons="auto"
-  sx={{ mb: 4 }}
+  sx={{ flexGrow: 1 }}
 >
   <Tab label="Home" />
   <Tab label="Available Harvests" />
@@ -1920,6 +1935,10 @@ useEffect(() => {
 } />
 
 </Tabs>
+ <IconButton onClick={() => setOptionDrawerOpen(true)}>
+    <MoreVertIcon />
+  </IconButton>
+</Box>
 
 
 
@@ -3466,6 +3485,18 @@ useEffect(() => {
 )}
 
 
+<Drawer anchor="right" open={optiondrawerOpen} onClose={() => setOptionDrawerOpen(false)}>
+  <List sx={{ width: 250 }}>
+    {tabLabels.map((label, index) => (
+      <ListItem button key={label} onClick={() => {
+        setTab(index);
+        setOptionDrawerOpen(false);
+      }}>
+        <ListItemText primary={label} />
+      </ListItem>
+    ))}
+  </List>
+</Drawer>
 
 
 

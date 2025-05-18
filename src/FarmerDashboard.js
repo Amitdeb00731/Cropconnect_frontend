@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Button, Typography, Container, Box, Tab, Tabs, Grid, Paper, MenuItem, TextField, Autocomplete,
-  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress, Avatar, ListItem, ListItemText
+  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress, Avatar, ListItem, ListItemText, List
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -44,7 +44,9 @@ import FarmerTipsAccordion from './FarmerTipsAccordion';
 import { fetchWeather } from './weather';
 import Lottie from 'lottie-react';
 import weatherAnimation from './assets/weather.json';
-import ChatFeatureSection from './ChatFeatureSection'; 
+import ChatFeatureSection from './ChatFeatureSection';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import Drawer from '@mui/material/Drawer'; 
 
 
 
@@ -81,6 +83,17 @@ export default function FarmerDashboard() {
   };
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+const tabLabels = [
+  "Home",
+  "New Harvest",
+  "Existing Harvests",
+  "Notifications",
+  "Transaction History",
+  "Messages"
+];
+
+
   const [harvest, setHarvest] = useState({
     riceType: '',
     totalQuantity: '',
@@ -1027,14 +1040,14 @@ useEffect(() => {
 />
 
 
-
+        <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Tabs
           value={tab}
           onChange={handleTabChange}
           centered
           variant="scrollable"
           scrollButtons="auto"
-          sx={{ mb: 4 }}
+          sx={{ flexGrow: 1 }}
         >
           <Tab label="Home" />
           <Tab label="New Harvest" />
@@ -1057,9 +1070,11 @@ useEffect(() => {
     Messages
   </Badge>
 } />
-
-
-        </Tabs>
+</Tabs>
+  <IconButton onClick={() => setDrawerOpen(true)}>
+    <MoreVertIcon />
+  </IconButton>
+</Box>
 
         {tab === 0 && (
   <>
@@ -1779,6 +1794,19 @@ useEffect(() => {
   />
 )}
 
+
+<Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+  <List sx={{ width: 250 }}>
+    {tabLabels.map((label, index) => (
+      <ListItem button key={label} onClick={() => {
+        setTab(index);
+        setDrawerOpen(false);
+      }}>
+        <ListItemText primary={label} />
+      </ListItem>
+    ))}
+  </List>
+</Drawer>
 
 
 
