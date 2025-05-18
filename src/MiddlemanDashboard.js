@@ -1963,175 +1963,184 @@ useEffect(() => {
 
       )}
 
-      {/* Harvest Cards */}
+
+    {tab === 1 && (
+  <>
+    <Container sx={{ mt: 2, mb: 4 }}>
       <Box textAlign="center" mb={2}>
-  <Button variant="outlined" onClick={() => setShowHarvestMap(!showHarvestMap)}>
-    {showHarvestMap ? 'Hide Nearby Harvests Map' : 'Show Nearby Harvests Map'}
-  </Button>
-</Box>
+        <Button variant="outlined" onClick={() => setShowHarvestMap(!showHarvestMap)}>
+          {showHarvestMap ? 'Hide Nearby Harvests Map' : 'Show Nearby Harvests Map'}
+        </Button>
+      </Box>
 
-{showHarvestMap && currentLocation && (
-  <Box
-    sx={{
-      height: { xs: 300, sm: 400, md: 500 },
-      mb: 3,
-      borderRadius: 3,
-      overflow: 'hidden',
-    }}
-  >
-    <HarvestMapView
-      currentLocation={currentLocation}
-      harvests={harvests.filter((h) => {
-        const dist = haversineDistance(
-          currentLocation.latitude,
-          currentLocation.longitude,
-          h.latitude,
-          h.longitude
-        );
-        return dist <= distanceRadius;
-      })}
-    />
-  </Box>
-)}
-
-      {tab === 1 && (
-      <Grid container spacing={3}>
-    <Grid container spacing={2} mb={3}>
-      <Grid item xs={12} sm={4}>
-        <TextField
-          fullWidth
-          variant="outlined"
-          label="Search Rice Type"
-          value={searchRiceType}
-          onChange={(e) => setSearchRiceType(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
+      {showHarvestMap && currentLocation && (
+        <Box
+          sx={{
+            height: { xs: 300, sm: 400, md: 500 },
+            mb: 3,
+            borderRadius: 3,
+            overflow: 'hidden',
           }}
-        />
-      </Grid>
-      <Grid item xs={12} sm={4}>
-        <Autocomplete
-  freeSolo
-  fullWidth
-  options={[...new Set(harvests.map(h => h.farmLocation))]}
-  value={filterLocation}
-  onChange={(e, newValue) => setFilterLocation(newValue || '')}
-  inputValue={filterLocation}
-  onInputChange={(e, newInputValue) => setFilterLocation(newInputValue)}
-  renderInput={(params) => (
-    <TextField
-      {...params}
-      variant="outlined"
-      label="Filter by Location"
-      placeholder="Type location..."
-      sx={{ mr: 10 }} 
-    />
-  )}
-/>
-
-      </Grid>
-      <Grid item xs={12} sm={4}>
-        <TextField
-          select
-          fullWidth
-          variant="outlined"
-          label="Sort By"
-          value={sortOption}
-          onChange={(e) => setSortOption(e.target.value)}
-          sx={{ mr: 10 }} 
         >
-          <MenuItem value="">None</MenuItem>
-          <MenuItem value="date_newest">Date of Harvest (Newest First)</MenuItem>
-          <MenuItem value="price_low_high">Price (Low to High)</MenuItem>
-          <MenuItem value="price_high_low">Price (High to Low)</MenuItem>
-        </TextField>
+          <HarvestMapView
+            currentLocation={currentLocation}
+            harvests={harvests.filter((h) => {
+              const dist = haversineDistance(
+                currentLocation.latitude,
+                currentLocation.longitude,
+                h.latitude,
+                h.longitude
+              );
+              return dist <= distanceRadius;
+            })}
+          />
+        </Box>
+      )}
+    </Container>
+
+    <Grid container spacing={3}>
+      {/* 🔍 Filter and Sort Controls */}
+      <Grid container spacing={2} mb={3}>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            fullWidth
+            variant="outlined"
+            label="Search Rice Type"
+            value={searchRiceType}
+            onChange={(e) => setSearchRiceType(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={4}>
+          <Autocomplete
+            freeSolo
+            fullWidth
+            options={[...new Set(harvests.map(h => h.farmLocation))]}
+            value={filterLocation}
+            onChange={(e, newValue) => setFilterLocation(newValue || '')}
+            inputValue={filterLocation}
+            onInputChange={(e, newInputValue) => setFilterLocation(newInputValue)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                label="Filter by Location"
+                placeholder="Type location..."
+                sx={{ mr: 10 }}
+              />
+            )}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={4}>
+          <TextField
+            select
+            fullWidth
+            variant="outlined"
+            label="Sort By"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+            sx={{ mr: 10 }}
+          >
+            <MenuItem value="">None</MenuItem>
+            <MenuItem value="date_newest">Date of Harvest (Newest First)</MenuItem>
+            <MenuItem value="price_low_high">Price (Low to High)</MenuItem>
+            <MenuItem value="price_high_low">Price (High to Low)</MenuItem>
+          </TextField>
+        </Grid>
       </Grid>
-    </Grid>
-   <Grid container spacing={2} mb={3}>
-  <Grid item xs={12}>
-    <FormControlLabel
-      control={
-        <Switch
-          checked={filterNearest}
-          onChange={() => setFilterNearest(prev => !prev)}
-        />
-      }
-      label="Filter by Nearest Harvests"
-    />
-  </Grid>
 
-  {filterNearest && (
-    <Grid item xs={12}>
-      {locationName && (
-      <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-        📍 Your location: {locationName}
-      </Typography>
-    )}
-      <Typography gutterBottom>Distance Radius (km)</Typography>
-      <Slider
-        value={distanceRadius}
-        onChange={(e, val) => setDistanceRadius(val)}
-        valueLabelDisplay="on"
-        min={1}
-        max={200}
-      />
-    </Grid>
-  )}
-</Grid>
-{filterNearest && isDistanceLoading && (
-      <Typography
-        variant="body1"
-        color="textSecondary"
-        textAlign="center"
-        sx={{ mb: 2, width: '100%' }}
-      >
-        Fetching nearest harvests...
-      </Typography>
-    )}
+      {/* 📍 Nearest Filter */}
+      <Grid container spacing={2} mb={3}>
+        <Grid item xs={12}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={filterNearest}
+                onChange={() => setFilterNearest(prev => !prev)}
+              />
+            }
+            label="Filter by Nearest Harvests"
+          />
+        </Grid>
 
-        {harvests
-  .filter(h =>
-    h.riceType.toLowerCase().includes(searchRiceType.toLowerCase()) &&
-    (filterLocation === '' || h.farmLocation === filterLocation)
-  )
-   .filter(h => {
-    if (!filterNearest) return true; // only filter by distance if enabled
-    if (currentLocation && h.latitude && h.longitude) {
-      const dist = haversineDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        h.latitude,
-        h.longitude
-      );
-      h.distanceFromUser = dist.toFixed(2); // store for card display
-      return dist <= distanceRadius;
-    }
-    return false;
-  })
-  .sort((a, b) => {
-    if (sortOption === 'date_newest') {
-      return new Date(b.dateOfHarvest) - new Date(a.dateOfHarvest);
-    } else if (sortOption === 'price_low_high') {
-      return parseFloat(a.askingPrice) - parseFloat(b.askingPrice);
-    } else if (sortOption === 'price_high_low') {
-      return parseFloat(b.askingPrice) - parseFloat(a.askingPrice);
-    }
-    return 0; // no sort
-  })
-  .map((harvest) => (
+        {filterNearest && (
+          <Grid item xs={12}>
+            {locationName && (
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                📍 Your location: {locationName}
+              </Typography>
+            )}
+            <Typography gutterBottom>Distance Radius (km)</Typography>
+            <Slider
+              value={distanceRadius}
+              onChange={(e, val) => setDistanceRadius(val)}
+              valueLabelDisplay="on"
+              min={1}
+              max={200}
+            />
+          </Grid>
+        )}
+      </Grid>
+
+      {filterNearest && isDistanceLoading && (
+        <Typography
+          variant="body1"
+          color="textSecondary"
+          textAlign="center"
+          sx={{ mb: 2, width: '100%' }}
+        >
+          Fetching nearest harvests...
+        </Typography>
+      )}
+
+      {/* 🧺 Harvest Cards */}
+      {harvests
+        .filter(h =>
+          h.riceType.toLowerCase().includes(searchRiceType.toLowerCase()) &&
+          (filterLocation === '' || h.farmLocation === filterLocation)
+        )
+        .filter(h => {
+          if (!filterNearest) return true;
+          if (currentLocation && h.latitude && h.longitude) {
+            const dist = haversineDistance(
+              currentLocation.latitude,
+              currentLocation.longitude,
+              h.latitude,
+              h.longitude
+            );
+            h.distanceFromUser = dist.toFixed(2);
+            return dist <= distanceRadius;
+          }
+          return false;
+        })
+        .sort((a, b) => {
+          if (sortOption === 'date_newest') {
+            return new Date(b.dateOfHarvest) - new Date(a.dateOfHarvest);
+          } else if (sortOption === 'price_low_high') {
+            return parseFloat(a.askingPrice) - parseFloat(b.askingPrice);
+          } else if (sortOption === 'price_high_low') {
+            return parseFloat(b.askingPrice) - parseFloat(a.askingPrice);
+          }
+          return 0;
+        })
+        .map((harvest) => (
           <Grid item xs={12} sm={6} md={4} key={harvest.id}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-               <HarvestImageCarousel images={harvest.images || []} />
+              <HarvestImageCarousel images={harvest.images || []} />
               <CardContent sx={{ flexGrow: 1 }}>
-                 {harvest.isSoldOut && (
-  <Typography color="error" fontWeight={700}>
-    SOLD OUT
-  </Typography>
-)}
+                {harvest.isSoldOut && (
+                  <Typography color="error" fontWeight={700}>
+                    SOLD OUT
+                  </Typography>
+                )}
                 <Typography variant="h6">{harvest.riceType}</Typography>
                 <Typography variant="body2" color="textSecondary">
                   Quantity: {harvest.totalQuantity} {harvest.quantityUnit}
@@ -2145,55 +2154,55 @@ useEffect(() => {
                 <Typography variant="body2" color="textSecondary">
                   Harvest Date: {harvest.dateOfHarvest}
                 </Typography>
-                 {harvest.distanceFromUser && (
-    <Typography variant="body2" color="textSecondary">
-      Distance: {harvest.distanceFromUser} km
-    </Typography>
-  )}
+                {harvest.distanceFromUser && (
+                  <Typography variant="body2" color="textSecondary">
+                    Distance: {harvest.distanceFromUser} km
+                  </Typography>
+                )}
                 <Typography variant="body2" sx={{ mt: 1 }}>
                   <strong>Farmer:</strong> {harvest.farmerName}
                 </Typography>
                 <Typography variant="h5" sx={{ mt: 1 }}>
-                  <strong> {harvest.askingPrice} /-</strong>
+                  <strong>{harvest.askingPrice} /-</strong>
                 </Typography>
-
               </CardContent>
               <CardActions>
-              <Tooltip title="View Farmer Profile" arrow>
-  <IconButton
-    onClick={() => handleViewFarmer(harvest.farmerId)}
-    color="primary"
-    size="small"
-    sx={{
-      border: '1px solid',
-      borderColor: 'primary.main',
-      ml: 1,
-      mt: 1
-    }}
-  >
-    <PersonIcon fontSize="small" />
-  </IconButton>
-</Tooltip>
+                <Tooltip title="View Farmer Profile" arrow>
+                  <IconButton
+                    onClick={() => handleViewFarmer(harvest.farmerId)}
+                    color="primary"
+                    size="small"
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'primary.main',
+                      ml: 1,
+                      mt: 1
+                    }}
+                  >
+                    <PersonIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
 
-<Button onClick={() => initiateChatWithFarmer(harvest.farmerId)}>Message Farmer</Button>
-
-
-
+                <Button onClick={() => initiateChatWithFarmer(harvest.farmerId)}>
+                  Message Farmer
+                </Button>
 
                 <Button
-  fullWidth
-  variant="contained"
-  disabled={harvest.isSoldOut}
-  onClick={() => addToCart(harvest)}
->
-  {harvest.isSoldOut ? 'Sold Out' : 'Add to Cart'}
-</Button>
+                  fullWidth
+                  variant="contained"
+                  disabled={harvest.isSoldOut}
+                  onClick={() => addToCart(harvest)}
+                >
+                  {harvest.isSoldOut ? 'Sold Out' : 'Add to Cart'}
+                </Button>
               </CardActions>
             </Card>
           </Grid>
         ))}
-      </Grid>
-      )}
+    </Grid>
+  </>
+)}
+
 
       {tab === 2 && (
   <Box>
