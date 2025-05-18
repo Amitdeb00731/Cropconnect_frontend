@@ -93,7 +93,7 @@ export default function JourneyMap({ destination, onStop }) {
         }
 
         if (!markerRef.current && map) {
-          markerRef.current = new google.maps.marker.AdvancedMarkerElement({
+          markerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
             position: current,
             map,
             icon: {
