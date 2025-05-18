@@ -29,6 +29,7 @@ export default function JourneyMap({ destination, onStop }) {
   const [eta, setEta] = useState('');
   const [distance, setDistance] = useState('');
   const [is3D, setIs3D] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(null);
   const markerRef = useRef(null);
   const [watchId, setWatchId] = useState(null);
@@ -190,23 +191,24 @@ export default function JourneyMap({ destination, onStop }) {
       </div>
 
        {/* Instructions */}
-    <div
-  id="instructions-panel"
-  style={{
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    maxHeight: '40vh',
-    overflowY: 'auto',
-    background: 'white',
-    zIndex: 1000,
-    padding: '10px',
-    boxShadow: '0 -2px 10px rgba(0,0,0,0.2)',
-    borderTopLeftRadius: '12px',
-    borderTopRightRadius: '12px',
-  }}
-/>
+ <div style={{
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  width: '100%',
+  maxHeight: showInstructions ? '40vh' : '0',
+  overflowY: 'auto',
+  background: 'white',
+  zIndex: 1000,
+  padding: showInstructions ? '10px' : '0',
+  boxShadow: showInstructions ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
+  borderTopLeftRadius: showInstructions ? '12px' : '0',
+  borderTopRightRadius: showInstructions ? '12px' : '0',
+  transition: 'all 0.3s ease',
+}}>
+  <div id="instructions-panel" />
+</div>
+
 
 
       {/* 3D Toggle Button */}
@@ -240,6 +242,25 @@ export default function JourneyMap({ destination, onStop }) {
 >
   Mute Voice
 </button>
+
+<button
+  onClick={() => setShowInstructions(prev => !prev)}
+  style={{
+    position: 'absolute',
+    bottom: showInstructions ? '42vh' : '10px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: 'white',
+    border: '1px solid #ccc',
+    borderRadius: '50%',
+    padding: '6px 10px',
+    zIndex: 1100,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+  }}
+>
+  {showInstructions ? '▼' : '▲'}
+</button>
+
 
       {/* Stop Button */}
       <button onClick={stopJourney} style={{
