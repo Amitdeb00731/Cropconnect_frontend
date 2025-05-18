@@ -190,19 +190,24 @@ export default function JourneyMap({ destination, onStop }) {
       </div>
 
        {/* Instructions */}
-    <div id="instructions-panel" style={{
-      position: 'absolute',
-      right: '0',
-      top: '70px',
-      bottom: '0',
-      width: '300px',
-      maxWidth: '90vw',
-      overflowY: 'auto',
-      background: 'white',
-      zIndex: 1000,
-      padding: '10px',
-      boxShadow: '0 0 10px rgba(0,0,0,0.2)'
-    }} />
+    <div
+  id="instructions-panel"
+  style={{
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    maxHeight: '40vh',
+    overflowY: 'auto',
+    background: 'white',
+    zIndex: 1000,
+    padding: '10px',
+    boxShadow: '0 -2px 10px rgba(0,0,0,0.2)',
+    borderTopLeftRadius: '12px',
+    borderTopRightRadius: '12px',
+  }}
+/>
+
 
       {/* 3D Toggle Button */}
       <button onClick={toggle3D} style={{
