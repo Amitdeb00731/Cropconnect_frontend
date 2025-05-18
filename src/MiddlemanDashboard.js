@@ -50,6 +50,8 @@ import MiddlemanQuickActions from './MiddlemanQuickActions';
 import MiddlemanDealTimeline from './MiddlemanDealTimeline';
 import MiddlemanTipsAccordion from './MiddlemanTipsAccordion';
 import ChatFeatureSection from './ChatFeatureSection';
+import MillMapView from './MillMapView';
+
 
 
 
@@ -166,6 +168,7 @@ useEffect(() => {
 
 const [invoices, setInvoices] = useState([]);
 const [calculatedCost, setCalculatedCost] = useState(0);
+const [showMap, setShowMap] = useState(true);
 const [openFarmerDialog, setOpenFarmerDialog] = useState(false);
 const [unseenMessages, setUnseenMessages] = useState(0);
 const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('all'); 
@@ -2539,6 +2542,102 @@ useEffect(() => {
     <Typography variant="h6" gutterBottom>
       Available Mills
     </Typography>
+   <Box sx={{ my: 3 }}>
+  <FormControlLabel
+    control={
+      <Switch
+        checked={filterNearest}
+        onChange={(e) => setFilterNearest(e.target.checked)}
+      />
+    }
+    label="Show Nearby Mills on Map"
+  />
+</Box>
+
+{filterNearest && (
+  <>
+    {/* Radius control */}
+    <Box sx={{ maxWidth: 300, mb: 2 }}>
+      <Typography gutterBottom>Distance Radius: {distanceRadius} km</Typography>
+      <Slider
+        value={distanceRadius}
+        onChange={(e, val) => setDistanceRadius(val)}
+        step={5}
+        min={5}
+        max={200}
+        valueLabelDisplay="auto"
+      />
+    </Box>
+
+    {/* 🌍 Mobile-Friendly Map View */}
+    {currentLocation && showMap && (
+      <Box
+        component={Paper}
+        elevation={3}
+        sx={{
+          position: 'relative',
+          height: isMobile ? '60vh' : { xs: 400, md: 500 },
+          p: { xs: 0, sm: 2 },
+          borderRadius: 3,
+          overflow: 'hidden',
+          mb: 3
+        }}
+      >
+
+
+       {/* ✖️ Close button */}
+        {isMobile && (
+          <IconButton
+            size="small"
+            onClick={() => setShowMap(false)}
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 999,
+              backgroundColor: 'rgba(255,255,255,0.9)',
+              '&:hover': {
+                backgroundColor: 'rgba(255,255,255,1)',
+              }
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        )}
+
+
+
+        
+        <MillMapView
+          currentLocation={currentLocation}
+          mills={allMills.filter((m) => {
+            const dist = haversineDistance(
+              currentLocation.latitude,
+              currentLocation.longitude,
+              m.latitude,
+              m.longitude
+            );
+            return dist <= distanceRadius;
+          })}
+        />
+      </Box>
+    )}
+
+     {/* 🔄 Show Map Again if Closed */}
+    {!showMap && (
+      <Box textAlign="center" mb={3}>
+        <Button variant="outlined" onClick={() => setShowMap(true)}>
+          Show Nearby Mills Map
+        </Button>
+      </Box>
+    )}
+
+  </>
+)}
+
+
+
+
 
     {/* Filters */}
     <Box mb={3}>
