@@ -3491,17 +3491,62 @@ useEffect(() => {
 
 
 <Drawer anchor="right" open={optiondrawerOpen} onClose={() => setOptionDrawerOpen(false)}>
-  <List sx={{ width: 250 }}>
-    {tabLabels.map((label, index) => (
-      <ListItem button key={label} onClick={() => {
-        setTab(index);
-        setOptionDrawerOpen(false);
-      }}>
-        <ListItemText primary={label} />
-      </ListItem>
-    ))}
-  </List>
+  <Box sx={{ width: 250, display: 'flex', flexDirection: 'column', height: '100%' }}>
+    
+    {/* Header */}
+    <Box sx={{ p: 2 }}>
+      <Typography variant="subtitle1" fontWeight="bold">
+        {tawkDetails?.name || 'Middleman'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {tawkDetails?.email || 'email@example.com'}
+      </Typography>
+    </Box>
+
+    <Divider />
+
+      {/* Tab List */}
+    <List sx={{ flexGrow: 1 }}>
+      {tabLabels.map((label, index) => {
+        const iconPath = `/assets/icons/${label.toLowerCase().replace(/\s+/g, '_')}.png`;
+        return (
+          <React.Fragment key={label}>
+            <ListItem button onClick={() => {
+              setTab(index);
+              setOptionDrawerOpen(false);
+            }}>
+              <Box
+                component="img"
+                src={iconPath}
+                alt={label}
+                sx={{ width: 24, height: 24, mr: 2 }}
+              />
+              <ListItemText primary={label} />
+            </ListItem>
+            {index < tabLabels.length - 1 && <Divider />}
+          </React.Fragment>
+        );
+      })}
+    </List>
+
+    {/* Footer */}
+    <Box sx={{ p: 2, borderTop: '1px solid #ddd' }}>
+      <Button
+        fullWidth
+        variant="outlined"
+        color="error"
+        onClick={handleLogout}
+        sx={{ mb: 1 }}
+      >
+        Logout
+      </Button>
+      <Typography variant="caption" color="text.secondary" align="center" display="block">
+        © {new Date().getFullYear()} CropConnect
+      </Typography>
+    </Box>
+  </Box>
 </Drawer>
+
 
 {journeyDestination && (
   <JourneyMap
