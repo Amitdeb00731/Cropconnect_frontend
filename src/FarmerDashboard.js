@@ -28,7 +28,7 @@ import { MobileStepper} from '@mui/material';
 import KeyboardArrowLeft from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRight from '@mui/icons-material/KeyboardArrowRight';
 import TopNavbar from './TopNavbar';
-import { startOfWeek, startOfMonth, startOfYear, isAfter } from 'date-fns';
+import { startOfWeek, startOfMonth, startOfYear, isAfter, startOfDay } from 'date-fns';
 import {
   collection, addDoc, getDocs, getDoc, doc, updateDoc, query, where, deleteDoc
 } from 'firebase/firestore';
@@ -242,6 +242,9 @@ const getFilteredTransactions = () => {
   let fromDate;
 
   switch (filterType) {
+    case 'today':
+      fromDate = startOfDay(now);
+      break;
     case 'weekly':
       fromDate = startOfWeek(now);
       break;
@@ -1650,6 +1653,7 @@ useEffect(() => {
         sx={{ width: 200 }}
       >
         <MenuItem value="all">All</MenuItem>
+        <MenuItem value="today">Today</MenuItem>
         <MenuItem value="weekly">This Week</MenuItem>
         <MenuItem value="monthly">This Month</MenuItem>
         <MenuItem value="yearly">This Year</MenuItem>
