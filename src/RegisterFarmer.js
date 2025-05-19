@@ -37,22 +37,31 @@ export default function RegisterFarmer() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-const handleRegister = () => {
+const handleRegister = async () => {
   if (!email || !password || !name || !accountType) {
     alert("Please fill all fields.");
     return;
   }
 
-  // Only navigate with user input data
-  navigate('/complete-profile', {
-    state: {
-      name,
-      email,
-      password,
-      accountType,
-    }
-  });
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    // Optionally, store initial details in Firestore or move to complete profile
+    navigate('/complete-profile', {
+      state: {
+        name,
+        email,
+        accountType,
+        uid: user.uid  // helpful to send along
+      }
+    });
+  } catch (error) {
+    console.error("Error during registration:", error);
+    alert("Registration failed: " + error.message);
+  }
 };
+
 
   return (
     <Container maxWidth="sm">
