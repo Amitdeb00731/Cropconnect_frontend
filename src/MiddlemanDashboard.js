@@ -3405,7 +3405,7 @@ useEffect(() => {
       <Grid item xs={12} sm={4} textAlign="center">
         <Box
           component="img"
-          src={selectedFarmer.profileImage || 'https://via.placeholder.com/150'}
+          src={selectedFarmer.profileImage || '/no-img.jpg'}
           alt="Farmer Profile"
           sx={{
             width: { xs: 100, sm: 120 },
