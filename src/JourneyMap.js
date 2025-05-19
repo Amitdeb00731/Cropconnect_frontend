@@ -59,7 +59,7 @@ export default function JourneyMap({ destination, onStop }) {
 
     if (!window.google?.maps) {
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}&libraries=geometry`;
       script.async = true;
       script.defer = true;
       script.onload = initMap;
@@ -73,75 +73,101 @@ export default function JourneyMap({ destination, onStop }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!map || !destination || !window.google?.maps) return;
+useEffect(() => {
+  if (!map || !destination || !window.google?.maps) return;
 
-    const directionsService = new window.google.maps.DirectionsService();
+  const directionsService = new window.google.maps.DirectionsService();
 
-    const watch = navigator.geolocation.watchPosition(
-      (position) => {
-        const current = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        setCurrentPosition(current);
+  const watch = navigator.geolocation.watchPosition(
+    (position) => {
+      const current = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      setCurrentPosition(current);
 
-        if (map) {
-          const bounds = map.getBounds();
-          if (!bounds || !bounds.contains(current)) {
-            map.panTo(current);
-          }
+      if (map) {
+        const bounds = map.getBounds();
+        if (!bounds || !bounds.contains(current)) {
+          map.panTo(current);
         }
+      }
 
-        if (!markerRef.current && map) {
-          markerRef.current = new window.google.maps.Marker({
-            position: current,
-            map,
-            icon: {
-              url: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
-              scaledSize: new window.google.maps.Size(30, 30),
-            },
-            title: 'Your Location',
-          });
-        } else {
-          markerRef.current.setPosition(current);
-        }
-
-        directionsService.route(
-          {
-            origin: current,
-            destination,
-            travelMode: 'DRIVING',
-            provideRouteAlternatives: true,
+      if (!markerRef.current && map) {
+        markerRef.current = new window.google.maps.Marker({
+          position: current,
+          map,
+          icon: {
+            url: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
+            scaledSize: new window.google.maps.Size(30, 30),
           },
-          (result, status) => {
-            if (status === 'OK') {
-              if (status === 'OK') {
-  directionsRenderer.setDirections(result);
+          title: 'Your Location',
+        });
+      } else {
+        markerRef.current.setPosition(current);
+      }
 
-  const leg = result.routes[0].legs[0];
-  setEta(leg.duration.text);
-  setDistance(leg.distance.text);
+      directionsService.route(
+        {
+          origin: current,
+          destination,
+          travelMode: 'DRIVING',
+          provideRouteAlternatives: true,
+        },
+        (result, status) => {
+          if (status === 'OK') {
+            directionsRenderer.setDirections(result);
 
-  const steps = leg.steps;
-  const currentStep = steps[0]; // We'll detect the closest one dynamically
-  const nextInstruction = steps[1]?.instructions || '';
+            const leg = result.routes[0].legs[0];
+            setEta(leg.duration.text);
+            setDistance(leg.distance.text);
 
-  speakDirection(nextInstruction); // 🔊 Speak next turn
-}
+            const steps = leg.steps;
 
-            } else {
-              console.warn('Route error:', status);
+            // ✅ Find nearest step to current location
+            let closestStep = steps[0];
+            let minDistance = Infinity;
+
+            for (let step of steps) {
+              const stepLat = step.start_location.lat();
+              const stepLng = step.start_location.lng();
+              const dist = Math.hypot(current.lat - stepLat, current.lng - stepLng);
+
+              if (dist < minDistance) {
+                minDistance = dist;
+                closestStep = step;
+              }
             }
-          }
-        );
-      },
-      (err) => console.error(err),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-    );
 
-    setWatchId(watch);
-  }, [map, destination]);
+            // ✅ Speak the direction of the closest step
+            if (closestStep?.instructions) {
+              speakDirection(closestStep.instructions);
+            }
+
+            // ✅ Tilt and heading update like Google Maps
+            if (map && closestStep?.end_location) {
+              const heading = window.google.maps.geometry.spherical.computeHeading(
+                new window.google.maps.LatLng(current.lat, current.lng),
+                closestStep.end_location
+              );
+
+              map.setTilt(45);
+              map.setHeading(heading);
+            }
+
+          } else {
+            console.warn('Route error:', status);
+          }
+        }
+      );
+    },
+    (err) => console.error(err),
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+
+  setWatchId(watch);
+}, [map, destination]);
+
 
   const toggle3D = () => {
     if (!map) return;
