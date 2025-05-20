@@ -130,6 +130,8 @@ const [proposals, setProposals] = useState([]);
 const [selectedFarmer, setSelectedFarmer] = useState(null);
 const [journeyDestination, setJourneyDestination] = useState(null);
 const [selectedChatId, setSelectedChatId] = useState(null);
+const [paymentNotifications, setPaymentNotifications] = useState([]);
+
 const [chats, setChats] = useState([]);
 
 useEffect(() => {
@@ -184,6 +186,16 @@ useEffect(() => {
   return () => unsub();
 }, []);
 
+const markNotificationAsSeen = async (id, type) => {
+  try {
+    await updateDoc(doc(db, 'notifications', id), { seen: true });
+    if (type === 'processing_done') {
+      setPaymentNotifications(prev => prev.map(n => n.id === id ? { ...n, seen: true } : n));
+    }
+  } catch (err) {
+    console.error("❌ Failed to mark seen:", err.message);
+  }
+};
 
 
 const [invoices, setInvoices] = useState([]);
@@ -334,6 +346,33 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 const navigate = useNavigate();
+
+
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const q = query(collection(db, 'notifications'), where('userId', '==', uid));
+  const unsub = onSnapshot(q, (snapshot) => {
+    const relevant = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(n =>
+        ['cash_payment_pending', 'razorpay_payment_done', 'processing_done'].includes(n.type)
+      );
+
+    setPaymentNotifications(relevant);
+
+    // Optional: trigger snack for unseen processing_done
+    relevant.forEach(n => {
+      if (n.type === 'processing_done' && !n.seen) {
+        setSnack({ open: true, message: n.message, severity: 'success' });
+        updateDoc(doc(db, 'notifications', n.id), { seen: true });
+      }
+    });
+  });
+
+  return () => unsub();
+}, []);
+
 
 
 useEffect(() => {
@@ -558,6 +597,37 @@ const addToProcessedInventory = async (req) => {
   }
 };
 
+const generateCashInvoiceAfterConfirmation = async (req) => {
+  try {
+    const middlemanId = req.middlemanId || auth.currentUser?.uid;
+    if (!middlemanId) throw new Error("Missing middlemanId");
+
+    const middlemanSnap = await getDoc(doc(db, 'users', middlemanId));
+    const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
+
+    await addDoc(collection(db, 'invoices'), {
+      middlemanId,
+      millId: req.millId,
+      middlemanName,
+      millName: req.mill?.name || 'Unknown Mill',
+      millLocation: req.mill?.location || 'N/A',
+      riceType: req.riceType,
+      quantity: req.quantity,
+      processingCost: req.processingCost,
+      paymentMethod: 'cash',
+      paymentTimestamp: Date.now(),
+      timestamp: Date.now(),
+      type: 'mill_processing'
+    });
+
+    setSnack({ open: true, message: 'Invoice generated after mill cash confirmation.', severity: 'success' });
+  } catch (err) {
+    console.error('Invoice generation error:', err);  // 🔍 helpful for debugging
+    setSnack({ open: true, message: 'Failed to generate invoice after confirmation.', severity: 'error' });
+  }
+};
+
+
 
 const handleMillCashPayment = async (req) => {
   try {
@@ -579,26 +649,7 @@ const handleMillCashPayment = async (req) => {
       requestId: req.id
     });
 
-    // ✅ Generate and Save Invoice
-    const middlemanSnap = await getDoc(doc(db, 'users', req.middlemanId));
-    const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
-
-    await addDoc(collection(db, 'invoices'), {
-      middlemanId: req.middlemanId,
-      millId: req.millId,
-      middlemanName,
-      millName: req.mill?.name || 'Unknown Mill',
-      millLocation: req.mill?.location || 'N/A', 
-      riceType: req.riceType,
-      quantity: req.quantity,
-      processingCost: req.processingCost,
-      paymentMethod: 'cash',
-      paymentTimestamp: Date.now(),
-      timestamp: Date.now(),
-      type: 'mill_processing'
-    });
-
-    setSnack({ open: true, message: 'Cash payment recorded and invoice saved!', severity: 'success' });
+    setSnack({ open: true, message: 'Cash payment requested. Awaiting mill confirmation.', severity: 'info' });
   } catch (err) {
     console.error('Cash payment error:', err);
     setSnack({ open: true, message: 'Failed to send payment.', severity: 'error' });
@@ -1832,6 +1883,18 @@ const handleCashOption = async (inspection) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 const initiateChatWithFarmer = async (farmerId) => {
   const middlemanId = auth.currentUser?.uid;
   if (!middlemanId) return;
@@ -1866,6 +1929,101 @@ useEffect(() => {
 }, []);
 
 
+useEffect(() => {
+  return auth.onAuthStateChanged(user => {
+    if (!user) {
+      setProposals([]);
+      setInspectionResponses([]);
+      setPaymentNotifications([]);
+    }
+  });
+}, []);
+
+
+
+useEffect(() => {
+  const middlemanId = auth.currentUser?.uid;
+  if (!middlemanId) return;
+
+  const q = query(
+    collection(db, 'millProcessingRequests'),
+    where('middlemanId', '==', middlemanId),
+    where('paymentStatus', '==', 'cash_collected')
+  );
+
+  const unsub = onSnapshot(q, async (snapshot) => {
+    for (const docSnap of snapshot.docs) {
+      const req = { id: docSnap.id, ...docSnap.data() };
+
+      // 🔍 Check if invoice already exists
+      const existing = await getDocs(query(
+        collection(db, 'invoices'),
+        where('middlemanId', '==', middlemanId),
+        where('millId', '==', req.millId),
+        where('paymentMethod', '==', 'cash'),
+        where('riceType', '==', req.riceType),
+        where('quantity', '==', req.quantity)
+      ));
+      if (!existing.empty) continue; // ✅ Already invoiced
+
+      // ✅ Enrich with mill info if missing
+      if (!req.mill || !req.mill.name) {
+        const millSnap = await getDoc(doc(db, 'mills', req.millId));
+        if (millSnap.exists()) {
+          req.mill = millSnap.data();
+        }
+      }
+
+      await addToProcessedInventory(req);
+      await generateCashInvoiceAfterConfirmation(req);
+    }
+  });
+
+  return () => unsub();
+}, []);
+
+
+
+useEffect(() => {
+  const middlemanId = auth.currentUser?.uid;
+  if (!middlemanId) return;
+
+  const q = query(
+    collection(db, 'millProcessingRequests'),
+    where('middlemanId', '==', middlemanId),
+    where('paymentStatus', '==', 'cash_collected')
+  );
+
+  const unsub = onSnapshot(q, async (snapshot) => {
+    for (const docSnap of snapshot.docs) {
+      const data = { id: docSnap.id, ...docSnap.data() };
+
+      // 🛡 Prevent duplicate invoice generation
+      const existingInvoices = await getDocs(query(
+        collection(db, 'invoices'),
+        where('middlemanId', '==', middlemanId),
+        where('millId', '==', data.millId),
+        where('riceType', '==', data.riceType),
+        where('paymentMethod', '==', 'cash'),
+        where('quantity', '==', data.quantity)
+      ));
+      if (!existingInvoices.empty) continue;
+
+      // 👀 Enrich with mill info if not already present
+      if (!data.mill || !data.mill.name) {
+        const millSnap = await getDoc(doc(db, 'mills', data.millId));
+        if (millSnap.exists()) {
+          data.mill = millSnap.data();
+        }
+      }
+
+      // ✅ Generate invoice
+      await generateCashInvoiceAfterConfirmation(data);
+    }
+  });
+
+  return () => unsub();
+}, []);
 
 
 
@@ -1883,17 +2041,41 @@ useEffect(() => {
       
    <TopNavbar
   title="Middleman Dashboard"
-  unseenNotifications={unseenProposals + unseenInspections}
-  notifications={combinedNotifications}
-  onDeleteNotification={(id) => {
-    setProposals((prev) => prev.filter((p) => p.id !== id));
-    setInspectionResponses((prev) => prev.filter((r) => r.id !== id));
-  }}
-  onClearNotifications={() => {
+  unseenNotifications={
+  proposals.filter(p => !p.seen).length +
+  inspectionResponses.filter(r => !r.seen).length +
+  paymentNotifications.filter(n => !n.seen).length
+}
+  notifications={[
+    ...combinedNotifications,
+    ...paymentNotifications
+  ]}
+  onDeleteNotification={async (id) => {
+  try {
+    await deleteDoc(doc(db, 'notifications', id));
+    setProposals(prev => prev.filter(p => p.id !== id));
+    setInspectionResponses(prev => prev.filter(r => r.id !== id));
+    setPaymentNotifications(prev => prev.filter(n => n.id !== id));
+  } catch (err) {
+    console.error("Delete failed:", err.message);
+  }
+}}
+
+ onClearNotifications={async () => {
+  try {
+    const notifQuery = query(collection(db, 'notifications'), where('userId', '==', auth.currentUser.uid));
+    const snapshot = await getDocs(notifQuery);
+    await Promise.all(snapshot.docs.map(docSnap => deleteDoc(doc(db, 'notifications', docSnap.id))));
     setProposals([]);
     setInspectionResponses([]);
-  }}
+    setPaymentNotifications([]);
+  } catch (err) {
+    console.error("Clear all failed:", err.message);
+  }
+}}
+
 />
+
 
 
     <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -1907,26 +2089,32 @@ useEffect(() => {
 >
   <Tab label="Home" />
   <Tab label="Available Harvests" />
-  <Tab
-    label={
-      <Box display="flex" alignItems="center" gap={1}>
-        <span>Proposals Sent</span>
-        {unseenProposals > 0 && (
-          <Badge badgeContent={unseenProposals} color="error" sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }} />
-        )}
-      </Box>
-    }
-  />
-  <Tab
-    label={
-      <Box display="flex" alignItems="center" gap={1}>
-        <span>Inspection Responses</span>
-        {unseenInspections > 0 && (
-          <Badge badgeContent={unseenInspections} color="primary" sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }} />
-        )}
-      </Box>
-    }
-  />
+ <Tab
+  label={
+    <Box display="flex" alignItems="center" gap={1}>
+      <span>Proposals Sent</span>
+      <Badge
+        badgeContent={unseenProposals > 0 ? unseenProposals : null}
+        color="error"
+        sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }}
+      />
+    </Box>
+  }
+/>
+
+<Tab
+  label={
+    <Box display="flex" alignItems="center" gap={1}>
+      <span>Inspection Responses</span>
+      <Badge
+        badgeContent={unseenInspections > 0 ? unseenInspections : null}
+        color="primary"
+        sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }}
+      />
+    </Box>
+  }
+/>
+
   <Tab label="Inventory" />
   <Tab label="Find Mills" />
   <Tab label="Track Processing" />

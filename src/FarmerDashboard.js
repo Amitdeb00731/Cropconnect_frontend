@@ -54,6 +54,7 @@ import Drawer from '@mui/material/Drawer';
 
 
 
+
 export default function FarmerDashboard() {
 
   useEffect(() => {
@@ -107,6 +108,9 @@ const tabLabels = [
   });
   const [deals, setDeals] = useState([]);
   const [tawkDetails, setTawkDetails] = useState(null);
+  const [proposalNotifications, setProposalNotifications] = useState([]);
+const [inspectionNotifications, setInspectionNotifications] = useState([]);
+const [paymentNotifications, setPaymentNotifications] = useState([]);
   const [weather, setWeather] = useState(null);
 const [weatherLocationName, setWeatherLocationName] = useState('');
 const [selectedChatId, setSelectedChatId] = useState(null);
@@ -179,7 +183,6 @@ const [openMiddlemanDialog, setOpenMiddlemanDialog] = useState(false);
   const [proposals, setProposals] = useState([]);
   const [harvests, setHarvests] = useState([]);
   const [notifications, setNotifications] = useState([]);
-const [unseenCount, setUnseenCount] = useState(0);
   const [uid, setUid] = useState(null);
   const [locationOptions, setLocationOptions] = useState([]);
   const [fetchingLocation, setFetchingLocation] = useState(false);
@@ -345,10 +348,8 @@ fetchSoldTransactions(user.uid);
         seen: false
       }));
 
-      setNotifications(prev => [
-        ...prev.filter(n => n.type !== 'proposal'),
-        ...proposalNotifications
-      ]);
+     setProposalNotifications(proposalNotifications);
+
     });
 
     // ✅ Listen to Inspection Requests (updates inspectionRequests[] + notifications[])
@@ -407,10 +408,8 @@ fetchSoldTransactions(user.uid);
         seen: false
       }));
 
-      setNotifications(prev => [
-        ...prev.filter(n => n.type !== 'inspection'),
-        ...inspectionNotifications
-      ]);
+    setInspectionNotifications(inspectionNotifications);
+
     });
 
     const notifQuery = query(
@@ -428,11 +427,8 @@ fetchSoldTransactions(user.uid);
 
 
 
-    setNotifications(prev => {
-  const existingIds = new Set(prev.map(n => n.id));
-  const fresh = paymentNotifications.filter(n => !existingIds.has(n.id));
-  return [...prev, ...fresh];
-})
+    setPaymentNotifications(paymentNotifications);
+
 
 
     });
@@ -454,10 +450,6 @@ fetchSoldTransactions(user.uid);
 
 
 
-useEffect(() => {
-  const unseen = notifications.filter(n => !n.seen).length;
-  setUnseenCount(unseen);
-}, [notifications]);
 
 
   const fetchDeals = async (userId) => {
@@ -826,15 +818,24 @@ await addDoc(collection(db, 'transactions'), {
 
 
 
-const markAsSeen = (id) => {
-  setNotifications(prev =>
-    prev.map(notif => notif.id === id ? { ...notif, seen: true } : notif)
-  );
+const markAsSeen = async (id) => {
+  try {
+    await updateDoc(doc(db, 'notifications', id), { seen: true });
+    setNotifications(prev => prev.map(notif => notif.id === id ? { ...notif, seen: true } : notif));
+  } catch (err) {
+    console.error("❌ Failed to mark notification seen:", err.message);
+  }
 };
 
-const deleteNotification = (id) => {
-  setNotifications(prev => prev.filter(notif => notif.id !== id));
+const deleteNotification = async (id) => {
+  try {
+    await deleteDoc(doc(db, 'notifications', id));
+    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  } catch (err) {
+    console.error("❌ Delete failed:", err.message);
+  }
 };
+
 
 
 const handleCashCollected = async (notif) => {
@@ -936,24 +937,18 @@ await addDoc(collection(db, 'invoices'), {
 
 const clearAllNotifications = async () => {
   try {
-    const notifQuery = query(
-      collection(db, 'notifications'),
-      where('userId', '==', uid)
-    );
+    const notifQuery = query(collection(db, 'notifications'), where('userId', '==', uid));
     const snapshot = await getDocs(notifQuery);
-
-    const deletePromises = snapshot.docs.map(docSnap =>
-      deleteDoc(doc(db, 'notifications', docSnap.id))
-    );
-
+    const deletePromises = snapshot.docs.map(docSnap => deleteDoc(doc(db, 'notifications', docSnap.id)));
     await Promise.all(deletePromises);
     setNotifications([]);
     setSnack({ open: true, message: 'All notifications cleared', severity: 'success' });
   } catch (err) {
-    console.error('Failed to clear notifications:', err);
+    console.error('❌ Failed to clear all:', err);
     setSnack({ open: true, message: 'Failed to clear notifications', severity: 'error' });
   }
 };
+
 
 
 
@@ -1007,6 +1002,33 @@ useEffect(() => {
 }, []);
 
 
+useEffect(() => {
+  return auth.onAuthStateChanged(user => {
+    if (!user) {
+      setNotifications([]);  // Clear notifications on logout or account switch
+    }
+  });
+}, []);
+
+
+const allNotifications = [
+  ...proposalNotifications,
+  ...inspectionNotifications,
+  ...paymentNotifications
+];
+
+const unseenCount = allNotifications.filter(n => !n.seen).length;
+
+   useEffect(() => {
+     const allNotifications = [
+       ...proposalNotifications,
+       ...inspectionNotifications,
+       ...paymentNotifications
+     ];
+     setNotifications(allNotifications);
+   }, [proposalNotifications, inspectionNotifications, paymentNotifications]);
+   
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Container sx={{ px: { xs: 2, sm: 4 }, py: 4 }}>
@@ -1032,15 +1054,14 @@ useEffect(() => {
             Farmer Dashboard
           </Typography>
         </Box>
-      <TopNavbar
+     <TopNavbar
   title="Farmer Dashboard"
   unseenNotifications={unseenCount}
   notifications={notifications}
-  onDeleteNotification={(id) =>
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }
-  onClearNotifications={() => setNotifications([])}
+  onDeleteNotification={(id) => deleteNotification(id)}
+  onClearNotifications={clearAllNotifications}
 />
+
 
 
         <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -1055,18 +1076,21 @@ useEffect(() => {
           <Tab label="Home" />
           <Tab label="New Harvest" />
           <Tab label="Existing Harvests" />
-          <Tab
+         <Tab
   icon={<NotificationsActiveIcon />}
   iconPosition="start"
   label={
     <Box display="flex" alignItems="center" gap={1}>
       <span>Notifications</span>
-      {unseenCount > 0 && (
-        <Badge badgeContent={unseenCount} color="error" sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }} />
-      )}
+      <Badge
+        color="error"
+        badgeContent={unseenCount > 0 ? unseenCount : null}
+        sx={{ "& .MuiBadge-badge": { fontSize: '0.7rem' } }}
+      />
     </Box>
   }
 />
+
 <Tab label="Transaction History" />
 <Tab label={
   <Badge badgeContent={unseenMessages} color="error">
@@ -1457,7 +1481,7 @@ useEffect(() => {
     </Button>
 
     <SwipeableList type={ListType.IOS}>
-      {notifications.map((notif) => (
+      {allNotifications.map((notif) => (
         <SwipeableListItem
           key={notif.id}
           swipeLeft={{
