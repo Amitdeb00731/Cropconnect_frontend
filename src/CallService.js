@@ -53,6 +53,7 @@ pc.ontrack = (event) => {
   await setDoc(callRef, {
     callerId: currentUser.uid,
     calleeId,
+    chatId,
     offer: {
       type: offer.type,
       sdp: offer.sdp
