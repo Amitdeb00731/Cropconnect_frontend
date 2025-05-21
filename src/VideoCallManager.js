@@ -12,6 +12,7 @@ export const VideoCallProvider = ({ children }) => {
     remoteUserId: null,
     localStream: null,
     remoteStream: null,
+    callStartTime: null
   });
 
 useEffect(() => {
@@ -49,7 +50,8 @@ useEffect(() => {
     incomingCall: null,
     currentCallId: null,
     localStream: null,
-    remoteStream: null
+    remoteStream: null,
+    callStartTime: null
   });
 }
 

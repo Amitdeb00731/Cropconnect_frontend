@@ -77,7 +77,6 @@ function App() {
      
     </Router>
      <IncomingCallDialog />
-     <VideoCallUIWrapper />
     </VideoCallProvider>
   );
 }

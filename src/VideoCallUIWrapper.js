@@ -3,35 +3,41 @@ import React from 'react';
 import VideoCallUI from './VideoCallUI';
 import { useVideoCall } from './VideoCallManager';
 import { closeCall } from './CallService';
+import { auth } from './firebase';
 
-export default function VideoCallUIWrapper() {
+export default function VideoCallUIWrapper({ chatId }) {
   const { callState, setCallState } = useVideoCall();
+  const currentUser = auth.currentUser;
 
   if (!callState.inCall) return null;
 
   const handleEnd = async () => {
-    // 🔴 End call in Firestore
-    if (callState.currentCallId) {
+    // 🔴 End call and log duration
+    if (callState.currentCallId && chatId && currentUser && callState.callStartTime) {
+      await closeCall(
+        callState.currentCallId,
+        chatId,
+        currentUser.uid,
+        callState.callStartTime
+      );
+    } else if (callState.currentCallId) {
       await closeCall(callState.currentCallId);
     }
 
     // 🔇 Stop local media tracks
-    if (callState.localStream) {
-      callState.localStream.getTracks().forEach(track => track.stop());
-    }
+    callState.localStream?.getTracks().forEach(track => track.stop());
 
     // 🔇 Stop remote media tracks
-    if (callState.remoteStream) {
-      callState.remoteStream.getTracks().forEach(track => track.stop());
-    }
+    callState.remoteStream?.getTracks().forEach(track => track.stop());
 
-    // ♻️ Reset call state
+    // ♻️ Reset state
     setCallState({
       inCall: false,
       currentCallId: null,
       incomingCall: null,
       localStream: null,
       remoteStream: null,
+      callStartTime: null
     });
   };
 

@@ -71,13 +71,14 @@ export default function IncomingCallDialog() {
     if (audioRef.current) audioRef.current.pause();
 
     try {
-      const { localStream, remoteStream } = await answerCall(incomingCall.callId);
+      const { localStream, remoteStream } = await answerCall(incomingCall.callId, incomingCall.chatId);
       setCallState({
         inCall: true,
         incomingCall: null,
         currentCallId: incomingCall.callId,
         localStream,
         remoteStream,
+        callStartTime: Date.now(),  
       });
     } catch (err) {
       console.error("Error answering call:", err);

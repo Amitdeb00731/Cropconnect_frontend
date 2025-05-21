@@ -21,6 +21,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import { createCall } from './CallService';
 import { useVideoCall } from './VideoCallManager';
 import VideocamIcon from '@mui/icons-material/Videocam';
+import VideoCallUIWrapper from './VideoCallUIWrapper';
 
 
 
@@ -161,13 +162,15 @@ const startVideoCall = async () => {
   const partnerId = chatPartnerData?.uid || messages.find(m => m.senderId !== currentUser?.uid)?.senderId;
   if (!partnerId) return;
 
-  const { callId, localStream, remoteStream } = await createCall(partnerId);
+  const { callId, localStream, remoteStream } = await createCall(partnerId, chatId);
+
 
   setCallState({
     inCall: true,
     currentCallId: callId,
     localStream,
-    remoteStream
+    remoteStream,
+    callStartTime: Date.now(), 
   });
 };
 
@@ -346,6 +349,10 @@ const handleTypingStatus = (isTyping) => {
     }}
     onClick={() => window.open(msg.imageUrl, '_blank')}
   />
+) : msg.type === 'call' ? (
+  <Typography variant="body2" color="primary" fontStyle="italic">
+    {msg.text}
+  </Typography>
 ) : msg.type === 'audio' ? (
   <Box display="flex" alignItems="center" gap={1}>
     <IconButton
@@ -780,6 +787,10 @@ const handleTypingStatus = (isTyping) => {
     Delete
   </MenuItem>
 </Menu>
+
+
+<VideoCallUIWrapper chatId={chatId} />
+
 
 
     </Paper>

@@ -2,7 +2,7 @@
 import { db, auth } from './firebase';
 import {
   doc, setDoc, updateDoc, onSnapshot, collection,
-  addDoc, deleteDoc, getDoc
+  addDoc, deleteDoc, getDoc, serverTimestamp
 } from 'firebase/firestore';
 
 let pc = null;
@@ -15,7 +15,7 @@ const servers = {
   ]
 };
 
-export const createCall = async (calleeId) => {
+export const createCall = async (calleeId, chatId) => {
   const currentUser = auth.currentUser;
   pc = new RTCPeerConnection(servers);
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -60,6 +60,11 @@ pc.ontrack = (event) => {
     status: 'calling',
     timestamp: Date.now()
   });
+
+
+   // 🔔 Log call start in chat
+  await logCallMessage({ chatId, senderId: currentUser.uid, type: 'started' });
+
 
   // Listen for answer and apply it
   onSnapshot(callRef, (snapshot) => {
@@ -109,7 +114,7 @@ pc.ontrack = (event) => {
 
 };
 
-export const answerCall = async (callId) => {
+export const answerCall = async (callId, chatId) => {
   const callRef = doc(db, 'calls', callId);
   const callSnap = await getDoc(callRef);
   const data = callSnap.data();
@@ -178,6 +183,9 @@ pc.ontrack = (event) => {
     status: 'answered'
   });
 
+   // ✅ Log answer in chat
+  await logCallMessage({ chatId, senderId: auth.currentUser.uid, type: 'answered' });
+
  return new Promise((resolve) => {
   const checkStream = setInterval(() => {
     if (remoteStream.getTracks().length > 0) {
@@ -197,10 +205,29 @@ export const listenForCall = (userId, onIncomingCall) => {
   });
 };
 
-export const closeCall = async (callId) => {
+export const closeCall = async (callId, chatId = null, callerId = null, startTime = null) => {
   try {
     const callRef = doc(db, 'calls', callId);
     await updateDoc(callRef, { status: 'ended' });
+
+    // 🕒 Log call ended message if chatId and callerId are provided
+    if (chatId && callerId && startTime) {
+      const durationSec = Math.floor((Date.now() - startTime) / 1000);
+      const formatDuration = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins} min ${secs} sec`;
+      };
+      const durationFormatted = formatDuration(durationSec);
+
+      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        senderId: callerId,
+        type: 'call',
+        text: `📵 Call ended. Duration: ${durationFormatted}`,
+        timestamp: serverTimestamp(),
+        seen: false,
+      });
+    }
   } catch (e) {
     console.error("Failed to close call:", e);
   }
@@ -220,4 +247,38 @@ export const closeCall = async (callId) => {
   }
 };
 
+
+
+
+export const logCallMessage = async ({ chatId, senderId, type, duration = null }) => {
+  let text = '';
+
+  switch (type) {
+    case 'started':
+      text = '📞 Video call started.';
+      break;
+    case 'answered':
+      text = '✅ Video call answered.';
+      break;
+    case 'declined':
+      text = '❌ Video call declined.';
+      break;
+    case 'missed':
+      text = '🚫 Missed video call.';
+      break;
+    case 'ended':
+      text = `📵 Call ended. Duration: ${duration || '0s'}`;
+      break;
+    default:
+      return;
+  }
+
+  await addDoc(collection(db, 'chats', chatId, 'messages'), {
+    senderId,
+    type: 'call',
+    text,
+    timestamp: serverTimestamp(),
+    seen: false,
+  });
+};
 
