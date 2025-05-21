@@ -1,0 +1,63 @@
+.video-call-container {
+  position: fixed;
+  inset: 0;
+  background-color: black;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+/* Remote video takes full screen */
+.remote-video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+}
+
+/* Local video is small and pinned to a corner */
+.local-video {
+  position: absolute;
+  width: 110px;
+  height: 150px;
+  bottom: 16px;
+  right: 16px;
+  border-radius: 10px;
+  border: 2px solid #fff;
+  object-fit: cover;
+  z-index: 10000;
+}
+
+/* End button styled nicely */
+.end-call-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background-color: red;
+  color: white;
+  font-weight: bold;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  z-index: 10000;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+
+@media screen and (max-width: 600px) {
+  .local-video {
+    width: 90px;
+    height: 120px;
+    bottom: 12px;
+    right: 12px;
+  }
+
+  .end-call-btn {
+    bottom: 12px;
+    left: 12px;
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+}

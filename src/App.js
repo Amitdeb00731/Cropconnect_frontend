@@ -10,6 +10,11 @@ import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 import CompleteProfile from "./CompleteProfile";
 import MillDashboard from './MillDashboard';
+import { VideoCallProvider } from './VideoCallManager';
+import IncomingCallDialog from './IncomingCallDialog';
+import VideoCallUI from './VideoCallUI';
+import VideoCallUIWrapper from "./VideoCallUIWrapper";
+
 
 
 function App() {
@@ -33,6 +38,7 @@ function App() {
   }, []);
 
   return (
+    <VideoCallProvider>
     <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -70,6 +76,9 @@ function App() {
 
      
     </Router>
+     <IncomingCallDialog />
+     <VideoCallUIWrapper />
+    </VideoCallProvider>
   );
 }
 

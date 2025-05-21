@@ -18,6 +18,10 @@ import WaveSurfer from 'wavesurfer.js';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import { createCall } from './CallService';
+import { useVideoCall } from './VideoCallManager';
+import VideocamIcon from '@mui/icons-material/Videocam';
+
 
 
 
@@ -38,6 +42,11 @@ const typingTimeout = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 const fileInputRef = useRef(null);
 const [viewingUserId, setViewingUserId] = useState(null);
+
+const { setCallState } = useVideoCall();
+
+
+
 const [startX, setStartX] = useState(null);
 const [isCancelling, setIsCancelling] = useState(false);
 const [anchorEl, setAnchorEl] = useState(null);
@@ -147,6 +156,22 @@ const sendMessage = async () => {
   }
 };
 
+
+const startVideoCall = async () => {
+  const partnerId = chatPartnerData?.uid || messages.find(m => m.senderId !== currentUser?.uid)?.senderId;
+  if (!partnerId) return;
+
+  const { callId, localStream, remoteStream } = await createCall(partnerId);
+
+  setCallState({
+    inCall: true,
+    currentCallId: callId,
+    localStream,
+    remoteStream
+  });
+};
+
+
 const uploadImageToCloudinary = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -248,6 +273,13 @@ const handleTypingStatus = (isTyping) => {
   <Typography variant="h6" fontWeight={500}>
     Chat
   </Typography>
+ <Tooltip title="Start Video Call">
+  <IconButton onClick={startVideoCall} color="primary">
+    <VideocamIcon />
+  </IconButton>
+</Tooltip>
+
+
 </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', pr: 1 }}>
