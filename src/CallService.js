@@ -23,17 +23,19 @@ export const createCall = async (calleeId) => {
 
   // Add local stream tracks
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
- pc.ontrack = (event) => {
-  console.log("📡 Remote track received:", event.streams[0]);
+pc.ontrack = (event) => {
   if (event.streams && event.streams[0]) {
-    event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));// ✅ assign directly
-  } else {
-    event.track && remoteStream.addTrack(event.track); // fallback
+    event.streams[0].getTracks().forEach(track => {
+      remoteStream.addTrack(track);
+    });
+  } else if (event.track) {
+    remoteStream.addTrack(event.track);
   }
 };
 
 
-  const callRef = doc(db, 'calls', calleeId);
+
+  const callRef = doc(collection(db, 'calls'));
   const candidatesRef = collection(callRef, 'iceCandidates');
 
   pc.onicecandidate = (e) => {
@@ -110,14 +112,16 @@ export const answerCall = async (callId) => {
   const candidateQueue = [];
 
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
- pc.ontrack = (event) => {
-  console.log("📡 Remote track received:", event.streams[0]);
+pc.ontrack = (event) => {
   if (event.streams && event.streams[0]) {
-    event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));// ✅ assign directly
-  } else {
-    event.track && remoteStream.addTrack(event.track); // fallback
+    event.streams[0].getTracks().forEach(track => {
+      remoteStream.addTrack(track);
+    });
+  } else if (event.track) {
+    remoteStream.addTrack(event.track);
   }
 };
+
 
 
   const candidatesRef = collection(callRef, 'iceCandidates');
@@ -178,27 +182,26 @@ export const listenForCall = (userId, onIncomingCall) => {
 };
 
 export const closeCall = async (callId) => {
+  try {
+    const callRef = doc(db, 'calls', callId);
+    await updateDoc(callRef, { status: 'ended' });
+  } catch (e) {
+    console.error("Failed to close call:", e);
+  }
+
   if (pc) {
     pc.close();
     pc = null;
   }
+
   if (localStream) {
-    localStream.getTracks().forEach(t => t.stop());
+    localStream.getTracks().forEach(track => track.stop());
     localStream = null;
   }
+
   if (remoteStream) {
-    remoteStream.getTracks().forEach(t => t.stop());
     remoteStream = null;
   }
-
-  try {
-    const callRef = doc(db, 'calls', callId);
-    await updateDoc(callRef, { status: 'ended' });
-
-    // Optional cleanup:
-    setTimeout(() => deleteDoc(callRef), 3000); // cleanup after 3 seconds
-  } catch (err) {
-    console.warn("Call document might already be cleaned up.");
-  }
 };
+
 

@@ -16,9 +16,16 @@ export default function VideoCallUI({ localStream, remoteStream, onEnd }) {
 }, []);
 
 
- useEffect(() => {
-  if (localRef.current && localStream) localRef.current.srcObject = localStream;
-  if (remoteRef.current && remoteStream) remoteRef.current.srcObject = remoteStream;
+useEffect(() => {
+  if (localRef.current && localStream) {
+    localRef.current.srcObject = localStream;
+  }
+
+  if (remoteRef.current && remoteStream) {
+    setTimeout(() => {
+      remoteRef.current.srcObject = remoteStream;
+    }, 300); // slight delay ensures track is added before render
+  }
 }, [localStream, remoteStream]);
 
 

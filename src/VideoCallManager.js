@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { auth, db } from './firebase';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, query, collection, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 const VideoCallContext = createContext();
 
@@ -18,26 +18,37 @@ useEffect(() => {
   const unsubAuth = onAuthStateChanged(auth, (user) => {
     if (!user) return;
 
-    const callDoc = doc(db, 'calls', user.uid);
-    const unsubCall = onSnapshot(callDoc, (snap) => {
-      const data = snap.data();
-      if (!data) return;
+    const q = query(
+      collection(db, 'calls'),
+      where('calleeId', '==', user.uid),
+      where('status', '==', 'calling')
+    );
 
-      if (data.status === 'ended') {
-        console.log("🔚 Call ended remotely.");
-        setCallState({
-          inCall: false,
-          incomingCall: null,
-          currentCallId: null,
-          localStream: null,
-          remoteStream: null
-        });
-      }
+    const unsubCall = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach(change => {
+        const data = change.doc.data();
+        if (!data) return;
 
-      if (data.calleeId === user.uid && data.status === 'calling') {
-        console.log("📞 Incoming call detected:", data);
-        setCallState((prev) => ({ ...prev, incomingCall: { ...data, callId: snap.id } }));
-      }
+        // Only act if not already in a call
+        if (data.calleeId === user.uid && data.status === 'calling') {
+          console.log("📞 Incoming call detected:", data);
+          setCallState(prev => ({
+            ...prev,
+            incomingCall: { ...data, callId: change.doc.id }
+          }));
+        }
+
+        if (data.status === 'ended') {
+          console.log("🔚 Call ended remotely.");
+          setCallState({
+            inCall: false,
+            incomingCall: null,
+            currentCallId: null,
+            localStream: null,
+            remoteStream: null
+          });
+        }
+      });
     });
 
     return unsubCall;
@@ -45,6 +56,7 @@ useEffect(() => {
 
   return () => unsubAuth();
 }, []);
+
 
 
   return (
