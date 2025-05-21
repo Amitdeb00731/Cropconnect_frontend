@@ -98,7 +98,15 @@ pc.ontrack = (event) => {
     }
   };
 
-  return { callId: callRef.id, localStream, remoteStream };
+  return new Promise((resolve) => {
+  const checkStream = setInterval(() => {
+    if (remoteStream.getTracks().length > 0) {
+      clearInterval(checkStream);
+      resolve({ callId: callRef.id, localStream, remoteStream });
+    }
+  }, 100);
+});
+
 };
 
 export const answerCall = async (callId) => {
@@ -170,7 +178,15 @@ pc.ontrack = (event) => {
     status: 'answered'
   });
 
-  return { localStream, remoteStream };
+ return new Promise((resolve) => {
+  const checkStream = setInterval(() => {
+    if (remoteStream.getTracks().length > 0) {
+      clearInterval(checkStream);
+      resolve({ localStream, remoteStream });
+    }
+  }, 100);
+});
+
 };
 
 export const listenForCall = (userId, onIncomingCall) => {
