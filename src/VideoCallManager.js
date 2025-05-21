@@ -38,16 +38,21 @@ useEffect(() => {
           }));
         }
 
-        if (data.status === 'ended') {
-          console.log("🔚 Call ended remotely.");
-          setCallState({
-            inCall: false,
-            incomingCall: null,
-            currentCallId: null,
-            localStream: null,
-            remoteStream: null
-          });
-        }
+       if (data.status === 'ended') {
+  console.log("🔚 Call ended remotely.");
+  // Stop any active streams
+  callState.localStream?.getTracks().forEach(t => t.stop());
+  callState.remoteStream?.getTracks().forEach(t => t.stop());
+
+  setCallState({
+    inCall: false,
+    incomingCall: null,
+    currentCallId: null,
+    localStream: null,
+    remoteStream: null
+  });
+}
+
       });
     });
 

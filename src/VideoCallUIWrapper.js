@@ -10,8 +10,29 @@ export default function VideoCallUIWrapper() {
   if (!callState.inCall) return null;
 
   const handleEnd = async () => {
-    await closeCall(callState.currentCallId);
-    setCallState(prev => ({ ...prev, inCall: false, localStream: null, remoteStream: null }));
+    // 🔴 End call in Firestore
+    if (callState.currentCallId) {
+      await closeCall(callState.currentCallId);
+    }
+
+    // 🔇 Stop local media tracks
+    if (callState.localStream) {
+      callState.localStream.getTracks().forEach(track => track.stop());
+    }
+
+    // 🔇 Stop remote media tracks
+    if (callState.remoteStream) {
+      callState.remoteStream.getTracks().forEach(track => track.stop());
+    }
+
+    // ♻️ Reset call state
+    setCallState({
+      inCall: false,
+      currentCallId: null,
+      incomingCall: null,
+      localStream: null,
+      remoteStream: null,
+    });
   };
 
   return (

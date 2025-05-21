@@ -21,11 +21,17 @@ useEffect(() => {
     localRef.current.srcObject = localStream;
   }
 
-  if (remoteRef.current && remoteStream) {
-    setTimeout(() => {
+  if (remoteRef.current && remoteStream && remoteStream.getTracks().length > 0) {
+  remoteRef.current.srcObject = remoteStream;
+} else {
+  const wait = setInterval(() => {
+    if (remoteStream && remoteStream.getTracks().length > 0 && remoteRef.current) {
       remoteRef.current.srcObject = remoteStream;
-    }, 300); // slight delay ensures track is added before render
-  }
+      clearInterval(wait);
+    }
+  }, 200);
+}
+
 }, [localStream, remoteStream]);
 
 

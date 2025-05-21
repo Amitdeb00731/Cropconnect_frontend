@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from '@mui/material';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography
+} from '@mui/material';
 import { useVideoCall } from './VideoCallManager';
 import { answerCall, closeCall } from './CallService';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -18,11 +25,15 @@ export default function IncomingCallDialog() {
       audioRef.current.loop = true;
       audioRef.current.play().catch(e => console.warn("Audio autoplay blocked:", e));
 
-      // ⏱️ Set timeout to auto-decline
+      // ⏱️ Auto-decline after 30s
       timeoutRef.current = setTimeout(async () => {
-        await updateDoc(doc(db, 'calls', incomingCall.callId), { status: 'missed' });
+        try {
+          await updateDoc(doc(db, 'calls', incomingCall.callId), { status: 'missed' });
+        } catch (err) {
+          console.error("Failed to auto-decline call:", err);
+        }
         setCallState(prev => ({ ...prev, incomingCall: null }));
-      }, 30000); // 30 seconds
+      }, 30000);
     }
 
     return () => {
@@ -39,21 +50,39 @@ export default function IncomingCallDialog() {
   const handleReject = async () => {
     clearTimeout(timeoutRef.current);
     if (audioRef.current) audioRef.current.pause();
-    await closeCall(incomingCall.callId);
-    setCallState(prev => ({ ...prev, incomingCall: null }));
+
+    try {
+      await closeCall(incomingCall.callId);
+    } catch (err) {
+      console.error("Error rejecting call:", err);
+    }
+
+    setCallState({
+      inCall: false,
+      currentCallId: null,
+      incomingCall: null,
+      localStream: null,
+      remoteStream: null,
+    });
   };
 
   const handleAccept = async () => {
     clearTimeout(timeoutRef.current);
     if (audioRef.current) audioRef.current.pause();
-    const { localStream, remoteStream } = await answerCall(incomingCall.callId);
-    setCallState({
-      inCall: true,
-      incomingCall: null,
-      currentCallId: incomingCall.callId,
-      localStream,
-      remoteStream,
-    });
+
+    try {
+      const { localStream, remoteStream } = await answerCall(incomingCall.callId);
+      setCallState({
+        inCall: true,
+        incomingCall: null,
+        currentCallId: incomingCall.callId,
+        localStream,
+        remoteStream,
+      });
+    } catch (err) {
+      console.error("Error answering call:", err);
+      setCallState(prev => ({ ...prev, incomingCall: null }));
+    }
   };
 
   return (
