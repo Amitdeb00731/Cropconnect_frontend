@@ -1,4 +1,4 @@
-import React, { useEffect, useState , res} from 'react';
+import React, { useEffect, useState , res, useRef} from 'react';
 import {
   Container, Typography, Box, Grid, Card, CardContent, CardActions,
   Button, Snackbar, Alert, Badge, IconButton, Drawer, List, ListItem,
@@ -29,7 +29,7 @@ import TopNavbar from './TopNavbar';
 import { db } from './firebase';
 import { auth } from './firebase';
 import { format } from 'date-fns-tz'; 
-import { collection, getDocs, deleteDoc, doc, getDoc, addDoc, onSnapshot, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, getDoc, addDoc, onSnapshot, query, where, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import logo from './assets/Screenshot 2025-05-07 113933-Photoroom.png';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -355,10 +355,8 @@ const [finalizing, setFinalizing] = useState(false);
   const [harvests, setHarvests] = useState([]);
   const [userCoords, setUserCoords] = useState(null);
 const [filterNearestMills, setFilterNearestMills] = useState(false);
-  const [cart, setCart] = useState(() => {
-    const storedCart = localStorage.getItem('middlemanCart');
-    return storedCart ? JSON.parse(storedCart) : [];
-  });
+ const [cart, setCart] = useState([]);
+
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isMobile = useMediaQuery('(max-width:600px)');
@@ -386,6 +384,30 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 const navigate = useNavigate();
+
+const isRemoteUpdate = useRef(false);
+
+
+
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const cartRef = doc(db, 'carts', uid);
+  const unsub = onSnapshot(cartRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const newItems = docSnap.data().items || [];
+      isRemoteUpdate.current = true;
+      setCart(newItems);
+    } else {
+      isRemoteUpdate.current = true;
+      setCart([]);
+    }
+  });
+
+  return () => unsub();
+}, []);
+
 
 
 useEffect(() => {
@@ -914,11 +936,6 @@ useEffect(() => {
     );
   });
 
-  // Load cart from localStorage
-  const storedCart = localStorage.getItem('middlemanCart');
-  if (storedCart) {
-    setCart(JSON.parse(storedCart));
-  }
 
   // Listen for proposal updates
   const user = auth.currentUser;
@@ -1313,9 +1330,21 @@ useEffect(() => {
 
 
 
-  useEffect(() => {
-    localStorage.setItem('middlemanCart', JSON.stringify(cart));
-  }, [cart]);
+ useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  if (isRemoteUpdate.current) {
+    isRemoteUpdate.current = false;
+    return; // 🔁 Skip Firestore write to prevent loop
+  }
+
+  const cartRef = doc(db, 'carts', uid);
+  setDoc(cartRef, { items: cart, timestamp: Date.now() }, { merge: true });
+}, [cart]);
+
+
+
   const fetchHarvestsWithFarmerNames = async () => {
     const snapshot = await getDocs(collection(db, 'harvests'));
     const harvestList = [];
@@ -1852,6 +1881,9 @@ await addDoc(collection(db, 'invoices'), {
           category: 'raw',
           timestamp: Date.now()
         });
+
+
+        setCart(prev => prev.filter(item => item.id !== inspection.harvestId));
 
         // ✅ Notify farmer of successful Razorpay payment
 await addDoc(collection(db, 'notifications'), {
