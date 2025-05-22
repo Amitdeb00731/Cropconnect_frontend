@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, Box, Dialog, DialogTitle, DialogContent, Tab, Tabs, Grid, Card,
-  TextField, Button, Snackbar, Alert, CircularProgress, Autocomplete, IconButton, Divider
+  TextField, Button, Snackbar, Alert, CircularProgress, Autocomplete, IconButton, Divider, CardContent
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import axios from 'axios';
@@ -28,6 +28,11 @@ import Drawer from '@mui/material/Drawer';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
+import { isToday, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
+import { startOfMonth, endOfMonth, startOfWeek, eachDayOfInterval, format } from 'date-fns';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line
+} from 'recharts';
 
 
 
@@ -46,17 +51,21 @@ const parseQuantity = (str) => {
 export default function MillDashboard() {
   const [millProfile, setMillProfile] = useState(null);
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [txnFilter, setTxnFilter] = useState('all');
   const [editMode, setEditMode] = useState(false);
   const [locationOptions, setLocationOptions] = useState([]);
   const [fetchingLocation, setFetchingLocation] = useState(false);
   const [requests, setRequests] = useState([]);
+  const [searchRiceType, setSearchRiceType] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   const [tab, setTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
 const tabLabels = [
   "Home",
   "Processing Requests",
   "Under Process",
-  "Pending Lot"
+  "Pending Lot",
+  "Transactions" 
 ];
   const [selectedRequest, setSelectedRequest] = useState(null);
 const [openDecisionDialog, setOpenDecisionDialog] = useState(false);
@@ -71,6 +80,65 @@ const [openDecisionDialog, setOpenDecisionDialog] = useState(false);
 });
 
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+const [millTransactions, setMillTransactions] = useState([]);
+
+
+
+const getMonthlyData = (transactions) => {
+  const monthlyMap = {};
+
+  transactions.forEach(txn => {
+    if (txn.millId !== auth.currentUser?.uid) return;
+
+    const date = new Date(txn.paymentTimestamp || txn.timestamp);
+    const monthKey = format(date, 'MMM yyyy');
+
+    if (!monthlyMap[monthKey]) monthlyMap[monthKey] = 0;
+    monthlyMap[monthKey] += parseFloat(txn.processingCost) || 0;
+  });
+
+  return Object.entries(monthlyMap).map(([month, value]) => ({ month, value }));
+};
+
+const getWeeklyData = (transactions) => {
+  const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
+  const days = eachDayOfInterval({ start, end: new Date() });
+
+  return days.map(day => {
+    const label = format(day, 'EEE'); // Mon, Tue, etc.
+    const total = transactions
+      .filter(txn => {
+        const date = new Date(txn.paymentTimestamp || txn.timestamp);
+        return format(date, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd') &&
+               txn.millId === auth.currentUser?.uid;
+      })
+      .reduce((sum, txn) => sum + (parseFloat(txn.processingCost) || 0), 0);
+
+    return { day: label, total };
+  });
+};
+
+
+
+
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const q = query(
+    collection(db, "invoices"),
+    where("millId", "==", uid),
+    where("type", "==", "mill_processing")
+  );
+
+  const unsub = onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setMillTransactions(data);
+  });
+
+  return () => unsub();
+}, []);
+
 
 
 useEffect(() => {
@@ -198,6 +266,29 @@ const markMillCashCollected = async (req) => {
 };
 
 
+
+
+
+const getFilteredTransactions = () => {
+  return millTransactions
+    .filter(txn => txn.millId === auth.currentUser?.uid)
+    .filter(txn => {
+      const date = new Date(txn.paymentTimestamp || txn.timestamp);
+      if (txnFilter === 'today') return isToday(date);
+      if (txnFilter === 'week') return isThisWeek(date);
+      if (txnFilter === 'month') return isThisMonth(date);
+      if (txnFilter === 'year') return isThisYear(date);
+      return true;
+    })
+    .filter(txn => {
+      if (paymentMethodFilter === 'all') return true;
+      return txn.paymentMethod === paymentMethodFilter;
+    });
+};
+
+
+const filteredTransactions = getFilteredTransactions();
+const totalTxnAmount = filteredTransactions.reduce((sum, txn) => sum + (parseFloat(txn.processingCost) || 0), 0);
 
 
 
@@ -410,6 +501,7 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
   <Tab label="Processing Requests" />
   <Tab label="Under Process" />
   <Tab label="Pending Lot" />
+  <Tab label="Transactions" />
 </Tabs>
 <IconButton onClick={() => setDrawerOpen(true)}>
     <MoreVertIcon />
@@ -756,6 +848,144 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
     </Grid>
   </Box>
 )}
+
+
+
+{tab === 4 && (
+  <Box mt={4}>
+    <Typography variant="h6" gutterBottom>Completed Transactions</Typography>
+
+    {/* 📊 Weekly Earnings */}
+<Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>
+  Weekly Transaction Overview
+</Typography>
+<ResponsiveContainer width="100%" height={250}>
+  <BarChart data={getWeeklyData(millTransactions)}>
+    <CartesianGrid strokeDasharray="3 3" />
+    <XAxis dataKey="day" />
+    <YAxis />
+    <Tooltip />
+    <Bar dataKey="total" fill="#1976d2" />
+  </BarChart>
+</ResponsiveContainer>
+
+{/* 📆 Monthly Earnings */}
+<Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 4, mb: 1 }}>
+  Monthly Transaction Overview
+</Typography>
+<ResponsiveContainer width="100%" height={250}>
+  <LineChart data={getMonthlyData(millTransactions)}>
+    <CartesianGrid strokeDasharray="3 3" />
+    <XAxis dataKey="month" />
+    <YAxis />
+    <Tooltip />
+    <Line type="monotone" dataKey="value" stroke="#4caf50" strokeWidth={2} />
+  </LineChart>
+</ResponsiveContainer>
+
+
+    {/* 🔘 Filter Buttons */}
+    <Box mb={2} display="flex" flexWrap="wrap" gap={1}>
+      {['all', 'today', 'week', 'month', 'year'].map(label => (
+        <Button
+          key={label}
+          variant={txnFilter === label ? 'contained' : 'outlined'}
+          onClick={() => setTxnFilter(label)}
+        >
+          {label.charAt(0).toUpperCase() + label.slice(1)}
+        </Button>
+      ))}
+    </Box>
+    <Box mb={2}>
+  <TextField
+    label="Search Rice Type"
+    variant="outlined"
+    size="small"
+    fullWidth
+    value={searchRiceType}
+    onChange={(e) => setSearchRiceType(e.target.value)}
+  />
+</Box>
+
+    {/* 💳 Payment Method Filters */}
+    <Box mb={2} display="flex" flexWrap="wrap" gap={1}>
+      {['all', 'cash', 'razorpay'].map(method => (
+        <Button
+          key={method}
+          variant={paymentMethodFilter === method ? 'contained' : 'outlined'}
+          onClick={() => setPaymentMethodFilter(method)}
+        >
+          {method.charAt(0).toUpperCase() + method.slice(1)}
+        </Button>
+      ))}
+    </Box>
+
+    {/* 🔍 Filter & Display Logic */}
+    {(() => {
+      const filtered = millTransactions
+        .filter(txn => txn.millId === auth.currentUser?.uid)
+        .filter(txn => {
+          const date = new Date(txn.paymentTimestamp || txn.timestamp);
+          if (txnFilter === 'today') return isToday(date);
+          if (txnFilter === 'week') return isThisWeek(date);
+          if (txnFilter === 'month') return isThisMonth(date);
+          if (txnFilter === 'year') return isThisYear(date);
+          return true; // 'all'
+        })
+        .filter(txn => {
+          if (paymentMethodFilter === 'all') return true;
+          return txn.paymentMethod === paymentMethodFilter;
+        })
+         .filter(txn => {
+    if (!searchRiceType.trim()) return true;
+    return txn.riceType?.toLowerCase().includes(searchRiceType.trim().toLowerCase());
+  });
+
+      const totalAmount = filtered.reduce(
+        (sum, txn) => sum + (parseFloat(txn.processingCost) || 0),
+        0
+      );
+
+      return (
+        <>
+          {/* 💰 Total Display */}
+          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>
+            Total Transaction Value: ₹{totalAmount.toFixed(2)}
+          </Typography>
+
+          {filtered.length === 0 ? (
+            <Typography>No transactions found for selected filters.</Typography>
+          ) : (
+            filtered
+              .sort((a, b) => (b.paymentTimestamp || b.timestamp || 0) - (a.paymentTimestamp || a.timestamp || 0))
+              .map((txn) => (
+                <Card key={txn.id} sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Rice Type: {txn.riceType}
+                    </Typography>
+                    <Typography>Quantity (kg): {txn.quantity}</Typography>
+                    <Typography>Cost: ₹{txn.processingCost}</Typography>
+                    <Typography>Payment Method: {txn.paymentMethod}</Typography>
+                    <Typography>
+                      Paid On: {new Date(txn.paymentTimestamp || txn.timestamp).toLocaleString()}
+                    </Typography>
+                    <Typography>
+                      Middleman: {txn.middlemanName || "N/A"}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              ))
+          )}
+        </>
+      );
+    })()}
+  </Box>
+)}
+
+
+
+
 
 
       <Snackbar
