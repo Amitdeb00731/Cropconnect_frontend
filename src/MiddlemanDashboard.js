@@ -54,6 +54,8 @@ import MillMapView from './MillMapView';
 import HarvestMapView from './HarvestMapView';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import JourneyMap from './JourneyMap';
+import { generateCombinedInvoicePDF } from './InvoiceGenerator';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
 
 
 
@@ -237,6 +239,13 @@ const [invoiceToDelete, setInvoiceToDelete] = useState(null);
 
 
 const [invoiceFilter, setInvoiceFilter] = useState('all');
+
+const [quickFilter, setQuickFilter] = useState('today');
+const [fromDate, setFromDate] = useState(null);
+const [toDate, setToDate] = useState(null);
+
+
+
 const [specificDate, setSpecificDate] = useState(null);
 
 
@@ -271,6 +280,37 @@ const groupedByMonth = filteredInvoices.reduce((acc, inv) => {
   acc[monthName].push(inv);
   return acc;
 }, {});
+
+
+
+
+
+const filterInvoicesByDate = () => {
+  const now = new Date();
+  let start = null, end = null;
+
+  switch (quickFilter) {
+    case 'today':
+      start = startOfDay(now); end = endOfDay(now); break;
+    case 'week':
+      start = startOfWeek(now); end = endOfDay(now); break;
+    case 'month':
+      start = startOfMonth(now); end = endOfDay(now); break;
+    case 'year':
+      start = startOfYear(now); end = endOfDay(now); break;
+    case 'custom':
+      start = fromDate; end = toDate; break;
+    default:
+      return invoices;
+  }
+
+  return invoices.filter(inv => {
+    const date = new Date(inv.timestamp);
+    return (!start || date >= start) && (!end || date <= end);
+  });
+};
+
+
 
 
 
@@ -548,6 +588,22 @@ useEffect(() => {
 
   return () => unsub();
 }, []);
+
+
+
+
+
+
+const handleGenerateCombinedInvoice = async () => {
+  const filtered = filterInvoicesByDate();
+  if (!filtered.length) {
+    setSnack({ open: true, message: 'No invoices for selected range.', severity: 'warning' });
+    return;
+  }
+  await generateCombinedInvoicePDF(filtered);
+};
+
+
 
 
 
@@ -3310,21 +3366,21 @@ useEffect(() => {
 
     {/* Filter Controls */}
     <Box display="flex" flexWrap="wrap" gap={2} alignItems="center" mb={3}>
-    
-  <FormControl sx={{ minWidth: 180 }}>
-    <InputLabel>Invoice Type</InputLabel>
-    <Select
-      label="Invoice Type"
-      value={invoiceTypeFilter}
-      onChange={(e) => setInvoiceTypeFilter(e.target.value)}
-    >
-      <MenuItem value="all">All</MenuItem>
-      <MenuItem value="mill">Mill Processing</MenuItem>
-      <MenuItem value="farmer">Farmer Purchases</MenuItem>
-    </Select>
-  </FormControl>
+      {/* Existing Invoice Type Filter */}
+      <FormControl sx={{ minWidth: 180 }}>
+        <InputLabel>Invoice Type</InputLabel>
+        <Select
+          label="Invoice Type"
+          value={invoiceTypeFilter}
+          onChange={(e) => setInvoiceTypeFilter(e.target.value)}
+        >
+          <MenuItem value="all">All</MenuItem>
+          <MenuItem value="mill">Mill Processing</MenuItem>
+          <MenuItem value="farmer">Farmer Purchases</MenuItem>
+        </Select>
+      </FormControl>
 
-
+      {/* Existing Quick Filter */}
       <FormControl sx={{ minWidth: 180 }}>
         <InputLabel>Filter</InputLabel>
         <Select
@@ -3341,6 +3397,7 @@ useEffect(() => {
         </Select>
       </FormControl>
 
+      {/* Existing Specific Date Picker */}
       {invoiceFilter === 'date' && (
         <DatePicker
           label="Pick a Date"
@@ -3349,6 +3406,47 @@ useEffect(() => {
           renderInput={(params) => <TextField {...params} />}
         />
       )}
+
+      {/* NEW: Combined Invoice Date Range + Button */}
+      <FormControl sx={{ minWidth: 180 }}>
+        <InputLabel>Combined PDF Filter</InputLabel>
+        <Select
+          value={quickFilter}
+          label="Combined PDF Filter"
+          onChange={(e) => setQuickFilter(e.target.value)}
+        >
+          <MenuItem value="today">Today</MenuItem>
+          <MenuItem value="week">This Week</MenuItem>
+          <MenuItem value="month">This Month</MenuItem>
+          <MenuItem value="year">This Year</MenuItem>
+          <MenuItem value="custom">Custom Range</MenuItem>
+        </Select>
+      </FormControl>
+
+      {quickFilter === 'custom' && (
+        <Box display="flex" gap={2}>
+          <DatePicker
+            label="From"
+            value={fromDate}
+            onChange={(newDate) => setFromDate(newDate)}
+            renderInput={(params) => <TextField {...params} />}
+          />
+          <DatePicker
+            label="To"
+            value={toDate}
+            onChange={(newDate) => setToDate(newDate)}
+            renderInput={(params) => <TextField {...params} />}
+          />
+        </Box>
+      )}
+
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleGenerateCombinedInvoice}
+      >
+        Download Combined Invoice
+      </Button>
     </Box>
 
     {/* Filtered & Grouped Invoices */}
@@ -3370,6 +3468,7 @@ useEffect(() => {
     )}
   </Box>
 )}
+
 
 
 

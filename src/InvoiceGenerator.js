@@ -192,3 +192,155 @@ doc.text(addressLines, 14, 75); // Start just below the box
 
   doc.save(`MillInvoice_${invoice.id}.pdf`);
 };
+
+
+
+
+
+
+
+
+
+
+export const generateCombinedInvoicePDF = async (invoiceList) => {
+  const doc = new jsPDF();
+  const rupee = "Rs.";
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+
+
+
+   // Add watermark
+  const rotatedWatermark = await createRotatedImageBase64(logo);
+  doc.addImage(rotatedWatermark, "PNG", 0, 0, pageWidth, pageHeight);
+
+  // Header
+  doc.addImage(logo, "PNG", 10, 10, 40, 15);
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("Combined Transaction Summary", pageWidth / 2, 25, { align: "center" });
+
+
+  // ✅ Group by month & sort within month by date descending
+  const grouped = invoiceList
+    .sort((a, b) => b.timestamp - a.timestamp) // newest first
+    .reduce((acc, inv) => {
+      const date = new Date(inv.timestamp);
+      const monthKey = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      if (!acc[monthKey]) acc[monthKey] = [];
+      acc[monthKey].push(inv);
+      return acc;
+    }, {});
+
+  let grandTotal = 0;
+  let currentY = 30;
+
+  for (const [month, invoices] of Object.entries(grouped)) {
+    doc.setFontSize(14);
+    doc.text(month, 14, currentY);
+    currentY += 6;
+
+    const rows = [];
+    let subtotal = 0;
+
+    invoices.forEach((inv) => {
+      const name = inv.type === 'mill_processing' ? inv.millName : inv.farmerName;
+      let amount = 0;
+      if (inv.type === 'mill_processing') {
+        amount = parseFloat(inv.processingCost || 0);
+      } else {
+        amount = parseFloat(inv.harvests?.reduce((sum, h) =>
+          sum + parseFloat(h.finalizedPrice || h.proposedPrice || h.askingPrice || 0), 0)) || 0;
+      }
+
+      const dateTime = new Date(inv.timestamp).toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+
+      const paymentType = inv.paymentMethod ? inv.paymentMethod.toUpperCase() : "N/A";
+      const invoiceId = inv.id || "N/A";
+
+      rows.push([
+        dateTime,
+        inv.type === 'mill_processing' ? 'Mill' : 'Farmer',
+        name,
+        paymentType,
+        invoiceId,
+        `${rupee} ${amount.toFixed(2)}`
+      ]);
+
+      subtotal += amount;
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Date & Time", "Type", "Name", "Payment Type", "Invoice ID", "Amount"]],
+      body: rows,
+      theme: "grid",
+      styles: { fontSize: 10 },
+      margin: { left: 14 },
+      headStyles: { fillColor: [22, 160, 133], textColor: 255, fontStyle: "bold" }
+    });
+
+    currentY = doc.lastAutoTable.finalY + 6;
+    doc.setFontSize(11);
+    doc.text(`Subtotal for ${month}: ${rupee} ${subtotal.toFixed(2)}`, 14, currentY);
+    currentY += 20;
+
+    grandTotal += subtotal;
+
+    // Auto page break
+    if (currentY > 270) {
+      doc.addPage();
+      currentY = 20;
+    }
+  }
+let finalY = doc.lastAutoTable.finalY + 10;
+
+finalY += 10;
+  doc.setFontSize(13);
+ doc.text(`Grand Total: ${rupee} ${grandTotal.toFixed(2)}`, 14, finalY);
+finalY += 10;
+
+// Ensure enough space; add page if needed
+if (finalY + 90 > pageHeight) {
+  doc.addPage();
+  finalY = 20;
+}
+
+
+// Terms & Conditions
+doc.setFontSize(10);
+doc.setFont("helvetica", "bold");
+doc.text("Terms & Conditions:", 14, finalY);
+doc.setFontSize(9);
+doc.setFont("helvetica", "normal");
+doc.text("- This invoice is generated electronically and does not require physical signature.", 14, finalY + 6);
+doc.text("- Please retain this invoice for your records.", 14, finalY + 12);
+doc.text("- Payment once made is non-refundable.", 14, finalY + 18);
+doc.text("- For queries, contact us using the information below.", 14, finalY + 24);
+
+// Signature
+const sigWidth = 40;
+const sigHeight = 15;
+const sigY = finalY + 35;
+doc.addImage(signature, "PNG", 14, sigY, sigWidth, sigHeight);
+doc.setFontSize(10);
+doc.text("Authorized Signature", 14, sigY + sigHeight + 5);
+doc.text("Market Authority", 14, sigY + sigHeight + 11);
+
+// Footer
+doc.setFontSize(9);
+doc.setTextColor(150);
+doc.text(
+  "© 2025 CropConnect | Contact: +91 8170843004 | Email: amitdebrnp380@gmail.com",
+  pageWidth / 2,
+  pageHeight - 10,
+  { align: "center" }
+);
+
+
+  doc.save(`Combined_Invoice.pdf`);
+};
