@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Button, Typography, Container, Box, Tab, Tabs, Grid, Paper, MenuItem, TextField, Autocomplete,
-  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress, Avatar, ListItem, ListItemText, List, Divider
+  Snackbar, Alert, Accordion, AccordionSummary, AccordionDetails, Card, CardContent, CardActions, Badge, CircularProgress, Avatar, ListItem, ListItemText, List, Divider, Switch, FormControlLabel
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -95,6 +95,13 @@ const tabLabels = [
 ];
 
 
+
+
+
+
+
+
+
   const [harvest, setHarvest] = useState({
     riceType: '',
     totalQuantity: '',
@@ -107,6 +114,11 @@ const tabLabels = [
     id: null
   });
   const [deals, setDeals] = useState([]);
+  const [startDate, setStartDate] = useState(null);
+const [endDate, setEndDate] = useState(null);
+const [customDateEnabled, setCustomDateEnabled] = useState(false);
+
+
   const [tawkDetails, setTawkDetails] = useState(null);
   const [proposalNotifications, setProposalNotifications] = useState([]);
 const [inspectionNotifications, setInspectionNotifications] = useState([]);
@@ -239,32 +251,48 @@ const [openMiddlemanDialog, setOpenMiddlemanDialog] = useState(false);
   const [filterType, setFilterType] = useState('all');
 
 const getFilteredTransactions = () => {
-  if (filterType === 'all') return soldTransactions;
+  let filtered = soldTransactions;
 
   const now = new Date();
   let fromDate;
 
-  switch (filterType) {
-    case 'today':
-      fromDate = startOfDay(now);
-      break;
-    case 'weekly':
-      fromDate = startOfWeek(now);
-      break;
-    case 'monthly':
-      fromDate = startOfMonth(now);
-      break;
-    case 'yearly':
-      fromDate = startOfYear(now);
-      break;
-    default:
-      return soldTransactions;
+  // Apply quick filter
+  if (filterType !== 'all') {
+    switch (filterType) {
+      case 'today':
+        fromDate = startOfDay(now);
+        break;
+      case 'weekly':
+        fromDate = startOfWeek(now);
+        break;
+      case 'monthly':
+        fromDate = startOfMonth(now);
+        break;
+      case 'yearly':
+        fromDate = startOfYear(now);
+        break;
+      default:
+        break;
+    }
+
+    if (fromDate) {
+      filtered = filtered.filter(txn =>
+        txn.soldOutTimestamp && isAfter(new Date(txn.soldOutTimestamp), fromDate)
+      );
+    }
   }
 
- return soldTransactions.filter(txn =>
-  txn.soldOutTimestamp && isAfter(new Date(txn.soldOutTimestamp), fromDate)
-);
+   // Apply custom date range ONLY if enabled
+  if (customDateEnabled && startDate && endDate) {
+    filtered = filtered.filter(txn => {
+      const txnDate = new Date(txn.soldOutTimestamp);
+      return txnDate >= startOfDay(startDate) && txnDate <= endDate;
+    });
+  }
+
+  return filtered.sort((a, b) => new Date(b.soldOutTimestamp) - new Date(a.soldOutTimestamp));
 };
+
 
 const filteredTransactions = getFilteredTransactions();
 
@@ -272,6 +300,21 @@ const totalFilteredAmount = filteredTransactions.reduce((sum, txn) => {
   const price = parseFloat(txn.finalizedPrice || txn.proposedPrice || txn.askingPrice || 0);
   return sum + price;
 }, 0);
+
+const [currentPage, setCurrentPage] = useState(1);
+const itemsPerPage = 5;
+
+const paginatedTransactions = filteredTransactions.slice(
+  (currentPage - 1) * itemsPerPage,
+  currentPage * itemsPerPage
+);
+const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+
+useEffect(() => {
+  setCurrentPage(1);
+}, [filterType, startDate, endDate, customDateEnabled]);
+
+
 
 useEffect(() => {
   const user = auth.currentUser;
@@ -1667,22 +1710,55 @@ const unseenCount = allNotifications.filter(n => !n.seen).length;
   <Box>
     <Typography variant="h5" gutterBottom>Transaction History</Typography>
 
-    {/* Filter dropdown */}
-    <Box mb={2} display="flex" justifyContent="center" gap={2}>
-      <TextField
-        select
-        label="Filter by"
-        value={filterType}
-        onChange={(e) => setFilterType(e.target.value)}
-        sx={{ width: 200 }}
-      >
-        <MenuItem value="all">All</MenuItem>
-        <MenuItem value="today">Today</MenuItem>
-        <MenuItem value="weekly">This Week</MenuItem>
-        <MenuItem value="monthly">This Month</MenuItem>
-        <MenuItem value="yearly">This Year</MenuItem>
-      </TextField>
-    </Box>
+    {/* Filter dropdown + date pickers */}
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <Box mb={2} display="flex" flexDirection={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="center" gap={2}>
+        <TextField
+          select
+          label="Quick Filter"
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          sx={{ width: 200 }}
+          disabled={customDateEnabled}
+        >
+          <MenuItem value="all">All</MenuItem>
+          <MenuItem value="today">Today</MenuItem>
+          <MenuItem value="weekly">This Week</MenuItem>
+          <MenuItem value="monthly">This Month</MenuItem>
+          <MenuItem value="yearly">This Year</MenuItem>
+        </TextField>
+
+        {/* Toggle for custom filter */}
+    <FormControlLabel
+      control={
+        <Switch
+          checked={customDateEnabled}
+          onChange={() => setCustomDateEnabled(prev => !prev)}
+          color="primary"
+        />
+      }
+      label="Enable Custom Date Range"
+    />
+
+    {/* Custom date range pickers only if enabled */}
+    {customDateEnabled && (
+      <Box display="flex" gap={2} flexWrap="wrap" justifyContent="center">
+        <DatePicker
+          label="Start Date"
+          value={startDate}
+          onChange={(newValue) => setStartDate(newValue)}
+          renderInput={(params) => <TextField {...params} sx={{ width: 160 }} />}
+        />
+        <DatePicker
+          label="End Date"
+          value={endDate}
+          onChange={(newValue) => setEndDate(newValue)}
+          renderInput={(params) => <TextField {...params} sx={{ width: 160 }} />}
+        />
+      </Box>
+    )}
+      </Box>
+    </LocalizationProvider>
 
     {/* Total filtered amount */}
     <Box mb={2} textAlign="center">
@@ -1697,24 +1773,48 @@ const unseenCount = allNotifications.filter(n => !n.seen).length;
     </Box>
 
     {/* Filtered Transactions */}
+     {/* Pagination logic */}
     {filteredTransactions.length === 0 ? (
       <Typography>No transactions found for the selected period.</Typography>
     ) : (
-      filteredTransactions.map((item, i) => (
-        <Card key={item.id} sx={{ mb: 2, p: 2 }}>
-          <Typography><strong>Rice Type:</strong> {item.riceType}</Typography>
-          <Typography><strong>Remaining Quantity:</strong> {item.remainingQuantity} {item.quantityUnit}</Typography>
-          <Typography><strong>Sold Price:</strong> ₹{item.proposedPrice || item.askingPrice}</Typography>
-          <Typography><strong>Farm Location:</strong> {item.farmLocation}</Typography>
+      <>
+        {paginatedTransactions.map((item) => (
+          <Card key={item.id} sx={{ mb: 2, p: 2 }}>
+            <Typography><strong>Rice Type:</strong> {item.riceType}</Typography>
+            <Typography><strong>Remaining Quantity:</strong> {item.remainingQuantity} {item.quantityUnit}</Typography>
+            <Typography><strong>Sold Price:</strong> ₹{item.finalizedPrice || item.proposedPrice || item.askingPrice}</Typography>
+            <Typography><strong>Farm Location:</strong> {item.farmLocation}</Typography>
+            <Typography>
+              <strong>Date of Harvest:</strong> {item.dateOfHarvest ? new Date(item.dateOfHarvest).toLocaleDateString() : 'N/A'}
+            </Typography>
+            <Typography><strong>Sold Out On:</strong> {item.soldOutAt || 'N/A'}</Typography>
+          </Card>
+        ))}
+
+        <Box display="flex" justifyContent="center" alignItems="center" mt={2} gap={2}>
+          <Button
+            variant="outlined"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => prev - 1)}
+          >
+            Prev
+          </Button>
           <Typography>
-            <strong>Date of Harvest:</strong> {item.dateOfHarvest ? new Date(item.dateOfHarvest).toLocaleDateString() : 'N/A'}
+            Page {currentPage} of {totalPages}
           </Typography>
-          <Typography><strong>Sold Out On:</strong> {item.soldOutAt || 'N/A'}</Typography>
-        </Card>
-      ))
+          <Button
+            variant="outlined"
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => prev + 1)}
+          >
+            Next
+          </Button>
+        </Box>
+      </>
     )}
   </Box>
 )}
+
 
 
 {tab === 5 && (

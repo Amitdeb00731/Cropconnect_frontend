@@ -82,6 +82,10 @@ const [openDecisionDialog, setOpenDecisionDialog] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 const [millTransactions, setMillTransactions] = useState([]);
 
+const [txnPage, setTxnPage] = useState(1);
+const itemsPerPage = 5;
+
+
 
 
 const getMonthlyData = (transactions) => {
@@ -289,6 +293,11 @@ const getFilteredTransactions = () => {
 
 const filteredTransactions = getFilteredTransactions();
 const totalTxnAmount = filteredTransactions.reduce((sum, txn) => sum + (parseFloat(txn.processingCost) || 0), 0);
+
+useEffect(() => {
+  setTxnPage(1);
+}, [txnFilter, paymentMethodFilter, searchRiceType]);
+
 
 
 
@@ -946,6 +955,12 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
         0
       );
 
+      const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginated = filtered
+    .sort((a, b) => (b.paymentTimestamp || b.timestamp || 0) - (a.paymentTimestamp || a.timestamp || 0))
+    .slice((txnPage - 1) * itemsPerPage, txnPage * itemsPerPage);
+
+
       return (
         <>
           {/* 💰 Total Display */}
@@ -953,29 +968,48 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
             Total Transaction Value: ₹{totalAmount.toFixed(2)}
           </Typography>
 
-          {filtered.length === 0 ? (
+          {paginated.length === 0 ? (
             <Typography>No transactions found for selected filters.</Typography>
           ) : (
-            filtered
-              .sort((a, b) => (b.paymentTimestamp || b.timestamp || 0) - (a.paymentTimestamp || a.timestamp || 0))
-              .map((txn) => (
-                <Card key={txn.id} sx={{ mb: 2 }}>
-                  <CardContent>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Rice Type: {txn.riceType}
-                    </Typography>
-                    <Typography>Quantity (kg): {txn.quantity}</Typography>
-                    <Typography>Cost: ₹{txn.processingCost}</Typography>
-                    <Typography>Payment Method: {txn.paymentMethod}</Typography>
-                    <Typography>
-                      Paid On: {new Date(txn.paymentTimestamp || txn.timestamp).toLocaleString()}
-                    </Typography>
-                    <Typography>
-                      Middleman: {txn.middlemanName || "N/A"}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))
+            paginated.map((txn) => (
+              <Card key={txn.id} sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Rice Type: {txn.riceType}
+                  </Typography>
+                  <Typography>Quantity (kg): {txn.quantity}</Typography>
+                  <Typography>Cost: ₹{txn.processingCost}</Typography>
+                  <Typography>Payment Method: {txn.paymentMethod}</Typography>
+                  <Typography>
+                    Paid On: {new Date(txn.paymentTimestamp || txn.timestamp).toLocaleString()}
+                  </Typography>
+                  <Typography>
+                    Middleman: {txn.middlemanName || "N/A"}
+                  </Typography>
+                </CardContent>
+              </Card>
+            ))
+          )}
+
+          {/* 🔁 Pagination Controls */}
+          {totalPages > 1 && (
+            <Box display="flex" justifyContent="center" alignItems="center" mt={2} gap={2}>
+              <Button
+                variant="outlined"
+                disabled={txnPage === 1}
+                onClick={() => setTxnPage(prev => prev - 1)}
+              >
+                Prev
+              </Button>
+              <Typography>Page {txnPage} of {totalPages}</Typography>
+              <Button
+                variant="outlined"
+                disabled={txnPage === totalPages}
+                onClick={() => setTxnPage(prev => prev + 1)}
+              >
+                Next
+              </Button>
+            </Box>
           )}
         </>
       );
