@@ -60,6 +60,9 @@ import {
   Stepper, Step, StepLabel
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import { Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+
 
 
 
@@ -3576,6 +3579,29 @@ const getActiveStep = (req, logisticsReq = {}) => {
                             variant="outlined"
                             sx={{ mr: 1 }}
                           />
+
+                          {logisticsReq?.deliveryProofImages?.length > 0 && !logisticsReq.millConfirmed && (
+  <Accordion sx={{ mt: 1 }}>
+    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      <Typography>View Delivery Proof</Typography>
+    </AccordionSummary>
+    <AccordionDetails>
+      <Grid container spacing={1}>
+        {logisticsReq.deliveryProofImages.map((url, idx) => (
+          <Grid item xs={4} key={idx}>
+            <img
+              src={url}
+              alt={`Proof ${idx + 1}`}
+              style={{ width: '100%', borderRadius: 8 }}
+            />
+          </Grid>
+        ))}
+      </Grid>
+    </AccordionDetails>
+  </Accordion>
+)}
+
+
                           {logisticsReq.status === 'declined' && (
                             <Button
                               size="small"
