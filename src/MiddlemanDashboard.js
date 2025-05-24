@@ -280,13 +280,24 @@ const handleSendLogisticsRequest = async () => {
     const millSnap = await getDoc(doc(db, 'mills', selectedLogisticsRequest.millId));
     const millData = millSnap.exists() ? millSnap.data() : {};
 
-        const declined = logisticsRequests.find(
+    // ⛳️ Get lat/lon for pickup location using Geoapify
+    const geoRes = await fetch(`https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(pickupLocation)}&apiKey=35d72c07d6f74bec8a373961eea91f46`);
+    const geoData = await geoRes.json();
+    const pickupCoords = geoData?.features?.[0]?.geometry?.coordinates;
+
+    if (!pickupCoords) {
+      setSnack({ open: true, message: 'Invalid pickup location', severity: 'error' });
+      return;
+    }
+
+    const [pickupLon, pickupLat] = pickupCoords;
+
+    const declined = logisticsRequests.find(
       lr => lr.requestId === selectedLogisticsRequest.id && lr.status === 'declined'
     );
     if (declined) {
       await deleteDoc(doc(db, 'logisticsRequests', declined.id));
     }
-
 
     await addDoc(collection(db, 'logisticsRequests'), {
       middlemanId,
@@ -302,8 +313,13 @@ const handleSendLogisticsRequest = async () => {
       timestamp: Date.now(),
       millLocation: millData.location || 'N/A',
       requestId: selectedLogisticsRequest.id,
-      status: 'pending'
-      
+      status: 'pending',
+
+      // 🗺️ Store coordinates
+      pickupLat,
+      pickupLon,
+      millLat: millData.latitude || null,
+      millLon: millData.longitude || null,
     });
 
     setSnack({ open: true, message: 'Logistics request sent!', severity: 'success' });
@@ -317,6 +333,7 @@ const handleSendLogisticsRequest = async () => {
     setSnack({ open: true, message: 'Failed to send request.', severity: 'error' });
   }
 };
+
 
 
 

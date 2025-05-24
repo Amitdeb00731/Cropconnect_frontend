@@ -1,9 +1,24 @@
 import React, { useEffect, useState , res, useRef} from 'react';
 import { collection, getDocs, deleteDoc, doc, getDoc, addDoc, onSnapshot, query, where, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Container, Typography, Box, Tabs, Tab, Grid, Card, CardContent, Button, Chip } from '@mui/material';
 import TopNavbar from './TopNavbar';
 import logo from './assets/shipconnect_logo.png';
+import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import IconButton from '@mui/material/IconButton';
+import LogoutIcon from '@mui/icons-material/Logout';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import HomeIcon from '@mui/icons-material/Home';
+import { Avatar, Divider, ListItemIcon } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+
 
 export default function LogisticsDashboard() {
   const [tab, setTab] = React.useState(0);
@@ -11,6 +26,30 @@ export default function LogisticsDashboard() {
 
   const [shippingPage, setShippingPage] = useState(1);
 const shippingItemsPerPage = 3;
+
+const [drawerOpen, setDrawerOpen] = useState(false);
+
+const user = auth.currentUser;
+
+const tabLabels = [
+  { label: "Home", icon: <HomeIcon /> },
+  { label: "Shipping Requests", icon: <LocalShippingIcon /> }
+];
+
+const navigate = useNavigate();
+
+
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  const toRad = angle => (angle * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
 
 
   const handleTabChange = (event, newValue) => {
@@ -99,6 +138,9 @@ const markAsDelivered = async (id) => {
           <Tab label="Home" />
           <Tab label="Shipping Requests" />
         </Tabs>
+         <IconButton onClick={() => setDrawerOpen(true)} sx={{ ml: 1 }}>
+    <MoreVertIcon />
+  </IconButton>
       </Box>
 
       {tab === 0 && (
@@ -128,6 +170,31 @@ const markAsDelivered = async (id) => {
               <Typography variant="body2">From: {req.middlemanName}</Typography>
               <Typography variant="body2">Mill: {req.millName} ({req.millLocation})</Typography>
               <Typography variant="body2">Pickup: {req.pickupLocation}</Typography>
+               {req.pickupLat && req.pickupLon && req.millLat && req.millLon && (
+    <Box sx={{ mt: 1, mb: 1 }}>
+      <MapContainer
+        center={[req.pickupLat, req.pickupLon]}
+        zoom={8}
+        scrollWheelZoom={false}
+        style={{ height: 200, width: '100%', borderRadius: 10 }}
+      >
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <Marker position={[req.pickupLat, req.pickupLon]}>
+          <Popup>Pickup</Popup>
+        </Marker>
+        <Marker position={[req.millLat, req.millLon]}>
+          <Popup>Drop</Popup>
+        </Marker>
+        <Polyline
+          positions={[[req.pickupLat, req.pickupLon], [req.millLat, req.millLon]]}
+          color="blue"
+        />
+      </MapContainer>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        Distance: {haversineDistance(req.pickupLat, req.pickupLon, req.millLat, req.millLon).toFixed(2)} km
+      </Typography>
+    </Box>
+  )}
               <Typography variant="body2">Date: {new Date(req.pickupDate).toLocaleDateString()}</Typography>
               <Typography variant="body2">Time: {req.pickupTime}</Typography>
               <Typography variant="body2" sx={{ mt: 1 }} color="text.secondary">Requested by: {req.requester}</Typography>
@@ -242,6 +309,47 @@ const markAsDelivered = async (id) => {
     </Grid>
   </Box>
 )}
+
+
+
+
+<Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+  <Box sx={{ width: 260 }} role="presentation">
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 2 }}>
+      <Avatar sx={{ width: 60, height: 60, mb: 1 }} />
+      <Typography variant="subtitle1">Logistics</Typography>
+      <Typography variant="body2" color="text.secondary">{user?.email}</Typography>
+    </Box>
+
+    <Divider />
+
+    <List>
+      {tabLabels.map((tab, index) => (
+        <ListItem button key={tab.label} onClick={() => setTab(index)}>
+          <ListItemIcon>{tab.icon}</ListItemIcon>
+          <ListItemText primary={tab.label} />
+        </ListItem>
+      ))}
+    </List>
+
+    <Divider />
+
+    <Box sx={{ mt: 'auto', p: 2 }}>
+      <ListItem button onClick={() => {
+        signOut(auth).then(() => navigate('/'));
+      }}>
+        <ListItemIcon><LogoutIcon /></ListItemIcon>
+        <ListItemText primary="Logout" />
+      </ListItem>
+
+      <Typography variant="caption" display="block" textAlign="center" sx={{ mt: 1 }}>
+        © {new Date().getFullYear()} ShipConnect | CropConnect
+      </Typography>
+    </Box>
+  </Box>
+</Drawer>
+
+
 
 
     </Container>
