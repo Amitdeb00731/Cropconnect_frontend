@@ -56,6 +56,10 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import JourneyMap from './JourneyMap';
 import { generateCombinedInvoicePDF } from './InvoiceGenerator';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
+import {
+  Stepper, Step, StepLabel
+} from '@mui/material';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
 
 
 
@@ -129,10 +133,22 @@ const tabLabels = [
   "Messages"
 ];
 const [proposals, setProposals] = useState([]);
+
+const [pickupLocation, setPickupLocation] = useState('');
+const [pickupDate, setPickupDate] = useState(null);
+const [pickupTime, setPickupTime] = useState('');
+const [locationSuggestions, setLocationSuggestions] = useState([]);
+
+
+
 const [selectedFarmer, setSelectedFarmer] = useState(null);
 const [journeyDestination, setJourneyDestination] = useState(null);
 const [selectedChatId, setSelectedChatId] = useState(null);
 const [paymentNotifications, setPaymentNotifications] = useState([]);
+
+const [logisticsDialogOpen, setLogisticsDialogOpen] = useState(false);
+const [selectedLogisticsRequest, setSelectedLogisticsRequest] = useState(null);
+
 
 const [chats, setChats] = useState([]);
 
@@ -250,6 +266,62 @@ const [specificDate, setSpecificDate] = useState(null);
 
 
 
+const handleSendLogisticsRequest = async () => {
+  if (!pickupLocation || !pickupDate || !pickupTime || !selectedLogisticsRequest) {
+    setSnack({ open: true, message: 'Please fill all fields', severity: 'warning' });
+    return;
+  }
+
+  try {
+    const middlemanId = auth.currentUser.uid;
+    const middlemanDoc = await getDoc(doc(db, 'users', middlemanId));
+    const middlemanName = middlemanDoc.exists() ? middlemanDoc.data().name : 'Unknown';
+
+    const millSnap = await getDoc(doc(db, 'mills', selectedLogisticsRequest.millId));
+    const millData = millSnap.exists() ? millSnap.data() : {};
+
+        const declined = logisticsRequests.find(
+      lr => lr.requestId === selectedLogisticsRequest.id && lr.status === 'declined'
+    );
+    if (declined) {
+      await deleteDoc(doc(db, 'logisticsRequests', declined.id));
+    }
+
+
+    await addDoc(collection(db, 'logisticsRequests'), {
+      middlemanId,
+      middlemanName,
+      millId: selectedLogisticsRequest.millId,
+      millName: millData.name || 'Unknown Mill',
+      riceType: selectedLogisticsRequest.riceType,
+      quantity: selectedLogisticsRequest.quantity,
+      pickupLocation,
+      pickupDate: pickupDate.toISOString(),
+      pickupTime,
+      requester: 'Middleman',
+      timestamp: Date.now(),
+      millLocation: millData.location || 'N/A',
+      requestId: selectedLogisticsRequest.id,
+      status: 'pending'
+      
+    });
+
+    setSnack({ open: true, message: 'Logistics request sent!', severity: 'success' });
+    setLogisticsDialogOpen(false);
+    setPickupLocation('');
+    setPickupDate(null);
+    setPickupTime('');
+    setSelectedLogisticsRequest(null);
+  } catch (err) {
+    console.error('Logistics request error:', err);
+    setSnack({ open: true, message: 'Failed to send request.', severity: 'error' });
+  }
+};
+
+
+
+
+
 const filteredInvoices = invoices.filter(inv => {
   const date = new Date(inv.timestamp);
   switch (invoiceFilter) {
@@ -312,6 +384,8 @@ const filterInvoicesByDate = () => {
 
 
 
+const [page, setPage] = useState(1);
+const itemsPerPage = 3;
 
 
 
@@ -343,6 +417,8 @@ const handleRiceTypeChange = (e) => {
 };
 const [processingRequests, setProcessingRequests] = useState([]);
 const [locationName, setLocationName] = useState('');
+const [logisticsRequests, setLogisticsRequests] = useState([]);
+
 const [proposedPrice, setProposedPrice] = useState('');
 const [disabledProposalIds, setDisabledProposalIds] = useState([]);
 const [filterRiceType, setFilterRiceType] = useState('');
@@ -680,6 +756,23 @@ const generateCashInvoiceAfterConfirmation = async (req) => {
     const middlemanId = req.middlemanId || auth.currentUser?.uid;
     if (!middlemanId) throw new Error("Missing middlemanId");
 
+    // 🛡 Check if invoice already exists
+    const q = query(
+      collection(db, 'invoices'),
+      where('middlemanId', '==', middlemanId),
+      where('millId', '==', req.millId),
+      where('riceType', '==', req.riceType),
+      where('quantity', '==', req.quantity),
+      where('paymentMethod', '==', 'cash'),
+      where('type', '==', 'mill_processing')
+    );
+
+    const existing = await getDocs(q);
+    if (!existing.empty) {
+      console.log("⚠️ Invoice already exists for this transaction.");
+      return; // ✅ Prevent duplicate
+    }
+
     const middlemanSnap = await getDoc(doc(db, 'users', middlemanId));
     const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
 
@@ -700,10 +793,11 @@ const generateCashInvoiceAfterConfirmation = async (req) => {
 
     setSnack({ open: true, message: 'Invoice generated after mill cash confirmation.', severity: 'success' });
   } catch (err) {
-    console.error('Invoice generation error:', err);  // 🔍 helpful for debugging
+    console.error('Invoice generation error:', err);
     setSnack({ open: true, message: 'Failed to generate invoice after confirmation.', severity: 'error' });
   }
 };
+
 
 
 
@@ -1567,6 +1661,41 @@ const combinedNotifications = [
 
 
 
+
+const handleUseCurrentLocation = () => {
+  if (!navigator.geolocation) {
+    setSnack({ open: true, message: 'Geolocation not supported', severity: 'error' });
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      try {
+        const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&apiKey=35d72c07d6f74bec8a373961eea91f46`);
+        const data = await res.json();
+        const place = data.features?.[0]?.properties?.formatted;
+        if (place) {
+          setPickupLocation(place);
+        } else {
+          setSnack({ open: true, message: 'Could not determine address', severity: 'warning' });
+        }
+      } catch (err) {
+        console.error('Reverse geocoding failed', err);
+        setSnack({ open: true, message: 'Reverse geocoding failed', severity: 'error' });
+      }
+    },
+    (err) => {
+      console.error("Location access denied:", err.message);
+      setSnack({ open: true, message: 'Location access denied', severity: 'error' });
+    }
+  );
+};
+
+
+
+
+
 const handleSendRequest = async () => {
   if (!selectedMill || !selectedRiceType || !sendQuantity) return;
 
@@ -2112,6 +2241,60 @@ useEffect(() => {
 
   return () => unsub();
 }, []);
+
+
+
+useEffect(() => {
+  const unsub = onSnapshot(
+    query(collection(db, 'logisticsRequests'), where('middlemanId', '==', auth.currentUser?.uid)),
+    (snap) => {
+      setLogisticsRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }
+  );
+  return () => unsub();
+}, []);
+
+
+
+
+const getActiveStep = (req, logisticsReq = {}) => {
+  const isLegacy = !('pickedUp' in req) && ('processingStatus' in req || 'paymentStatus' in req);
+
+  if (isLegacy) {
+    if (req.processingStatus === 'done') {
+      if (
+        req.paymentStatus === 'cash_collected' ||
+        req.paymentStatus === 'razorpay_done'
+      ) return 8;
+      return 7;
+    }
+    if (req.processingStatus === 'under_process') return 6;
+    if (req.processingStatus === 'pending_lot') return 5;
+    if (req.requestStatus === 'accepted') return 4;
+    return 4;
+  }
+
+  // Newer requests
+  if (!logisticsReq?.pickedUp) return 0;
+  if (!logisticsReq?.inTransit) return 1;
+  if (!logisticsReq?.delivered) return 2;
+  if (!logisticsReq?.millConfirmed) return 3;
+
+  if (req.processingStatus === 'pending_lot') return 4;
+  if (req.processingStatus === 'under_process') return 5;
+  if (req.processingStatus === 'done') {
+    if (
+      req.paymentStatus === 'cash_collected' ||
+      req.paymentStatus === 'razorpay_done'
+    ) return 7;
+    return 6;
+  }
+
+  return 4; // Fallback for unexpected cases
+};
+
+
+
 
 
 
@@ -3234,162 +3417,245 @@ useEffect(() => {
 
 {tab === 6 && (
   <Box>
-    <Button
-  variant="outlined"
-  color="error"
-  onClick={async () => {
-    const q = query(
-      collection(db, 'millProcessingRequests'),
-      where('middlemanId', '==', auth.currentUser.uid),
-      where('middlemanCleared', '!=', true)
-    );
-    const snapshot = await getDocs(q);
-
-    await Promise.all(snapshot.docs.map(async (docSnap) => {
-      const data = docSnap.data();
-
-      // Only clear if NOT declined or if already restored
-      if (data.requestStatus !== 'declined' || data.restored === true) {
-        await updateDoc(doc(db, 'millProcessingRequests', docSnap.id), {
-          middlemanCleared: true
-        });
-      }
-    }));
-
-    setSnack({
-      open: true,
-      message: 'Tracking history cleared! Declined-unrestored requests were skipped.',
-      severity: 'success'
-    });
-  }}
-  sx={{ mb: 2 }}
->
-  Clear Tracked Requests
-</Button>
-
-
     <Typography variant="h6" gutterBottom>Track Processing Requests</Typography>
     <Grid container spacing={2}>
       {processingRequests.length === 0 ? (
-  <Grid item xs={12}>
-    <Typography>No processing requests found.</Typography>
-  </Grid>
-) : (
-  processingRequests.map((req) => (
-    <Grid item xs={12} sm={6} md={4} key={req.id}>
-      <Card
-        sx={{
-          p: 2,
-          borderLeft: 5,
-          borderColor:
-            req.processingStatus === 'done'
-              ? 'blue'
-              : req.requestStatus === 'accepted'
-              ? 'green'
-              : req.requestStatus === 'pending'
-              ? 'orange'
-              : 'red',
-        }}
-      >
-        <Typography><strong>Mill:</strong> {req.mill?.name || 'Unknown'}</Typography>
-        <Typography><strong>Location:</strong> {req.mill?.location || 'N/A'}</Typography>
-        <Typography><strong>Rice Type:</strong> {req.riceType}</Typography>
-        <Typography><strong>Quantity:</strong> {req.quantity} Kg</Typography>
+        <Grid item xs={12}>
+          <Typography>No processing requests found.</Typography>
+        </Grid>
+      ) : (
+        (() => {
+          const sorted = [...processingRequests].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          const totalPages = Math.ceil(sorted.length / itemsPerPage);
+          const paginated = sorted.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-        <Box mt={1}>
-          <Typography variant="body2" fontWeight="bold" gutterBottom>Status:</Typography>
+          return (
+            <>
+              {paginated.map((req) => {
+                const logisticsReq = logisticsRequests.find(lr => lr.requestId === req.id);
+                return (
+              <Grid item xs={12} sm={6} md={4} key={req.id}>
+                <Card
+                  sx={{
+                    p: 2,
+                    borderLeft: 5,
+                    borderColor:
+                      req.processingStatus === 'done'
+                        ? 'blue'
+                        : req.requestStatus === 'accepted'
+                        ? 'green'
+                        : req.requestStatus === 'pending'
+                        ? 'orange'
+                        : 'red',
+                  }}
+                >
+                  <Typography><strong>Mill:</strong> {req.mill?.name || 'Unknown'}</Typography>
+                  <Typography><strong>Location:</strong> {req.mill?.location || 'N/A'}</Typography>
+                  <Typography><strong>Rice Type:</strong> {req.riceType}</Typography>
+                  <Typography><strong>Quantity:</strong> {req.quantity} Kg</Typography>
 
-          <Chip
-            label={
-              req.processingStatus === 'done'
-                ? 'Processing Complete'
-                : req.processingStatus === 'under_process'
-                ? 'Processing Started'
-                : req.processingStatus === 'pending_lot'
-                ? 'Processing Soon'
-                : req.requestStatus
-            }
-            color={
-              req.processingStatus === 'done'
-                ? 'primary'
-                : req.processingStatus === 'under_process'
-                ? 'success'
-                : req.processingStatus === 'pending_lot'
-                ? 'warning'
-                : req.requestStatus === 'declined'
-                ? 'error'
-                : 'default'
-            }
-            sx={{ mr: 1 }}
-          />
+                  <Box sx={{ overflowX: 'auto', mt: 2 }}>
+                    <Box sx={{ minWidth: '800px' }}>
+                      <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                        📍 Shipment & Processing Timeline
+                      </Typography>
+                      <Stepper activeStep={getActiveStep(req, logisticsReq)} alternativeLabel>
+                        {[
+                          "Shipment Picked Up",
+                          "In Transit",
+                          "Delivered – Waiting for Mill Confirmation",
+                          "Delivered and Confirmed by Mill",
+                          "Processing Soon",
+                          "Processing Started",
+                          "Processing Complete",
+                          "Payment Complete"
+                        ].map((label, index) => (
+                          <Step key={index}>
+                            <StepLabel>{label}</StepLabel>
+                          </Step>
+                        ))}
+                      </Stepper>
+                    </Box>
+                  </Box>
 
-          <Chip
-            label={req.requestStatus?.toUpperCase()}
-            color={
-              req.requestStatus === 'accepted'
-                ? 'success'
-                : req.requestStatus === 'pending'
-                ? 'warning'
-                : 'error'
-            }
-          />
+                  <Box mt={2}>
+                    <Typography variant="body2" fontWeight="bold" gutterBottom>Status:</Typography>
+                    <Chip
+                      label={
+                        req.processingStatus === 'pending_lot'
+                          ? '⏳ Processing Soon'
+                          : req.processingStatus === 'under_process'
+                          ? '⚙️ Processing Started'
+                          : req.processingStatus === 'done'
+                          ? '✅ Processing Complete'
+                          : req.requestStatus === 'declined'
+                          ? '❌ Declined'
+                          : req.requestStatus === 'accepted'
+                          ? '✅ Accepted'
+                          : '⌛ Pending'
+                      }
+                      color={
+                        req.processingStatus === 'pending_lot'
+                          ? 'warning'
+                          : req.processingStatus === 'under_process'
+                          ? 'info'
+                          : req.processingStatus === 'done'
+                          ? 'success'
+                          : req.requestStatus === 'declined'
+                          ? 'error'
+                          : req.requestStatus === 'accepted'
+                          ? 'success'
+                          : 'default'
+                      }
+                      sx={{ mt: 1 }}
+                    />
+                  </Box>
 
-          {/* ✅ Add to Inventory Button */}
-          {req.processingStatus === 'done' && (
-  <>
-    <Typography sx={{ mt: 1 }}>
-      ✅ Processing Complete
-    </Typography>
+                  <Box mt={2}>
+                    {req.requestStatus === 'accepted' && (
+                      !logisticsReq ? (
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setSelectedLogisticsRequest(req);
+                            setLogisticsDialogOpen(true);
+                          }}
+                        >
+                          Book Logistics
+                        </Button>
+                      ) : (
+                        <Box>
+                          <Chip
+                            label={
+                              logisticsReq.status === 'accepted'
+                                ? logisticsReq.delivered
+                                  ? logisticsReq.millConfirmed
+                                    ? 'Delivered and Confirmed by Mill ✅'
+                                    : 'Delivered – Waiting for Mill Confirmation 📦'
+                                  : logisticsReq.inTransit
+                                  ? 'Shipment In Transit 🚛'
+                                  : logisticsReq.pickedUp
+                                  ? 'Shipment Picked Up 🚚'
+                                  : 'Shipping Accepted ✅'
+                                : logisticsReq.status === 'declined'
+                                ? 'Shipping Declined ❌'
+                                : 'Shipping Request Sent'
+                            }
+                            color={
+                              logisticsReq.status === 'accepted'
+                                ? logisticsReq.delivered
+                                  ? logisticsReq.millConfirmed
+                                    ? 'success'
+                                    : 'warning'
+                                  : logisticsReq.inTransit
+                                  ? 'info'
+                                  : logisticsReq.pickedUp
+                                  ? 'primary'
+                                  : 'success'
+                                : logisticsReq.status === 'declined'
+                                ? 'error'
+                                : 'info'
+                            }
+                            variant="outlined"
+                            sx={{ mr: 1 }}
+                          />
+                          {logisticsReq.status === 'declined' && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => {
+                                setSelectedLogisticsRequest(req);
+                                setLogisticsDialogOpen(true);
+                              }}
+                            >
+                              Request Again
+                            </Button>
+                          )}
+                        </Box>
+                      )
+                    )}
+                  </Box>
 
-    {req.paymentStatus !== 'cash_collected' && req.paymentStatus !== 'razorpay_done' ? (
-      <>
-        <Typography sx={{ mt: 1 }}>
-          ⚠️ Payment Pending: ₹{req.processingCost}
-        </Typography>
-        <Button
-  variant="outlined"
-  color="warning"
-  sx={{ mt: 1, mr: 1 }}
-  onClick={() => handleMillCashPayment(req)}
->
-  Pay in Cash
-</Button>
-<Button
-  variant="contained"
-  color="primary"
-  sx={{ mt: 1 }}
-  onClick={() => handleMillRazorpayPayment(req)}
->
-  Pay with Razorpay
-</Button>
-      </>
-    ) : (
-      <>
-        <Typography sx={{ mt: 1 }}>✅ Payment Complete</Typography>
-        <Button
-          variant="contained"
-          color="success"
-          size="small"
-          sx={{ mt: 2 }}
-          onClick={() => addToProcessedInventory(req)}
-          disabled={req.inventoryAdded}
-        >
-          {req.inventoryAdded ? 'Added' : 'Add to Inventory'}
-        </Button>
-      </>
-    )}
-  </>
-)}
+                  {/* ✅ Add to Inventory Button */}
+                  {req.processingStatus === 'done' && (
+                    <Box mt={2}>
+                      <Typography>✅ Processing Complete</Typography>
 
-        </Box>
-      </Card>
-    </Grid>
-  ))
-)}
+                      {req.paymentStatus !== 'cash_collected' && req.paymentStatus !== 'razorpay_done' ? (
+                        <>
+                          <Typography sx={{ mt: 1 }}>
+                            ⚠️ Payment Pending: ₹{req.processingCost}
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            color="warning"
+                            sx={{ mt: 1, mr: 1 }}
+                            onClick={() => handleMillCashPayment(req)}
+                          >
+                            Pay in Cash
+                          </Button>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            sx={{ mt: 1 }}
+                            onClick={() => handleMillRazorpayPayment(req)}
+                          >
+                            Pay with Razorpay
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Typography sx={{ mt: 1 }}>✅ Payment Complete</Typography>
+                          <Button
+                            variant="contained"
+                            color="success"
+                            size="small"
+                            sx={{ mt: 2 }}
+                            onClick={() => addToProcessedInventory(req)}
+                            disabled={req.inventoryAdded}
+                          >
+                            {req.inventoryAdded ? 'Added' : 'Add to Inventory'}
+                          </Button>
+                        </>
+                      )}
+                    </Box>
+                  )}
+                </Card>
+              </Grid>
+               );
+              })}
 
+            {/* Pagination Controls */}
+              <Grid item xs={12} display="flex" justifyContent="center" mt={2}>
+                <Button
+                  variant="outlined"
+                  disabled={page === 1}
+                  onClick={() => {setPage(prev => Math.max(prev - 1, 1));
+                                 window.scrollTo({ top: 0, behavior: 'smooth' });}}
+                  sx={{ mr: 1 }}
+                >
+                  Previous
+                </Button>
+                <Typography sx={{ lineHeight: '36px', mx: 1 }}>
+                  Page {page} of {totalPages}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  disabled={page === totalPages}
+                  onClick={() => { setPage(prev => Math.min(prev + 1, totalPages));
+                                 window.scrollTo({ top: 0, behavior: 'smooth' });}}
+                >
+                  Next
+                </Button>
+              </Grid>
+            </>
+          );
+        })()
+      )}
     </Grid>
   </Box>
 )}
+
 
 
 {tab === 7 && (
@@ -3873,6 +4139,86 @@ useEffect(() => {
     onStop={() => setJourneyDestination(null)}
   />
 )}
+
+
+
+<Dialog open={logisticsDialogOpen} onClose={() => setLogisticsDialogOpen(false)} fullWidth maxWidth="sm">
+  <DialogTitle>Book Logistics</DialogTitle>
+  <DialogContent dividers>
+  <Autocomplete
+  freeSolo
+  options={locationSuggestions}
+  inputValue={pickupLocation}
+  onInputChange={(event, newInputValue) => {
+    setPickupLocation(newInputValue);
+
+    if (newInputValue.length > 2) {
+      fetch(`https://api.geoapify.com/v1/geocode/autocomplete?text=${newInputValue}&apiKey=35d72c07d6f74bec8a373961eea91f46`)
+        .then(res => res.json())
+        .then(data => {
+          const names = data.features.map(f => f.properties.formatted);
+          setLocationSuggestions(names);
+        });
+    }
+  }}
+  renderInput={(params) => (
+    <TextField
+      {...params}
+      label="Pickup Location"
+      variant="outlined"
+      fullWidth
+    InputProps={{
+  ...params.InputProps,
+  endAdornment: (
+    <>
+      {params.InputProps.endAdornment}
+      <IconButton
+        edge="end"
+        size="small"
+        onClick={handleUseCurrentLocation}
+        title="Use Current Location"
+        sx={{ ml: 1 }}
+      >
+        <MyLocationIcon fontSize="small" />
+      </IconButton>
+    </>
+  ),
+}}
+
+    />
+  )}
+/>
+
+
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <DatePicker
+        label="Pickup Date"
+        value={pickupDate}
+        onChange={(newValue) => setPickupDate(newValue)}
+        renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+      />
+    </LocalizationProvider>
+
+    <TextField
+      select
+      fullWidth
+      label="Pickup Time"
+      value={pickupTime}
+      onChange={(e) => setPickupTime(e.target.value)}
+      margin="normal"
+    >
+      {['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'].map((time) => (
+        <MenuItem key={time} value={time}>{time}</MenuItem>
+      ))}
+    </TextField>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setLogisticsDialogOpen(false)}>Cancel</Button>
+    <Button onClick={handleSendLogisticsRequest} variant="contained">Send Request</Button>
+  </DialogActions>
+</Dialog>
+
+
 
 
     </Container>

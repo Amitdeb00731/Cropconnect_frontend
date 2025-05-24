@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, Box, Dialog, DialogTitle, DialogContent, Tab, Tabs, Grid, Card,
-  TextField, Button, Snackbar, Alert, CircularProgress, Autocomplete, IconButton, Divider, CardContent
+  TextField, Button, Snackbar, Alert, CircularProgress, Autocomplete, IconButton, Divider, CardContent, Chip
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import axios from 'axios';
@@ -57,6 +57,13 @@ export default function MillDashboard() {
   const [fetchingLocation, setFetchingLocation] = useState(false);
   const [requests, setRequests] = useState([]);
   const [searchRiceType, setSearchRiceType] = useState('');
+
+  const [processingPage, setProcessingPage] = useState(1);
+const processingItemsPerPage = 3;
+
+
+
+  const [logisticsRequests, setLogisticsRequests] = useState([]);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   const [tab, setTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -85,7 +92,19 @@ const [millTransactions, setMillTransactions] = useState([]);
 const [txnPage, setTxnPage] = useState(1);
 const itemsPerPage = 5;
 
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
 
+  const q = query(collection(db, 'logisticsRequests'), where('millId', '==', uid));
+
+  const unsub = onSnapshot(q, (snap) => {
+    const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setLogisticsRequests(list);
+  });
+
+  return () => unsub();
+}, []);
 
 
 const getMonthlyData = (transactions) => {
@@ -181,23 +200,52 @@ useEffect(() => {
 
 
 
-const handleAcceptRequest = (request) => {
-  setSelectedRequest(request);
-  setOpenDecisionDialog(true);
+const handleAcceptRequest = async (request) => {
+  try {
+    await updateDoc(doc(db, 'millProcessingRequests', request.id), {
+      requestStatus: 'accepted'
+    });
+
+    setSnack({ open: true, message: 'Request accepted!', severity: 'success' });
+  } catch (err) {
+    console.error('Accept error:', err);
+    setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
+  }
 };
+
 
 const markLot = async (request, status) => {
   try {
+    // 1. Update processingStatus
     await updateDoc(doc(db, 'millProcessingRequests', request.id), {
       requestStatus: 'accepted',
       processingStatus: status
     });
+
+    // 2. Send notification to middleman
+    const message = status === 'under_process'
+      ? `Mill has started processing your lot of ${request.riceType} (${request.quantity} Kg).`
+      : `Mill has decided to hold your lot of ${request.riceType} (${request.quantity} Kg) for now.`;
+
+    await addDoc(collection(db, 'notifications'), {
+      userId: request.middlemanId,
+      type: 'lot_update',
+      message,
+      seen: false,
+      timestamp: Date.now()
+    });
+
     setOpenDecisionDialog(false);
-    setSnack({ open: true, message: `Lot marked as ${status.replace('_', ' ')}`, severity: 'success' });
+    setSnack({
+      open: true,
+      message: `Lot marked as ${status.replace('_', ' ')}`,
+      severity: 'success'
+    });
   } catch (err) {
     setSnack({ open: true, message: 'Update failed: ' + err.message, severity: 'error' });
   }
 };
+
 
 const markProcessingDone = async (id) => {
   try {
@@ -412,6 +460,25 @@ const handleDeclineRequest = async (request) => {
     );
   };
 
+
+
+
+  const confirmDelivery = async (logisticsRequestId) => {
+  try {
+    const ref = doc(db, 'logisticsRequests', logisticsRequestId);
+    await updateDoc(ref, { millConfirmed: true });
+
+    setSnack({ open: true, message: 'Delivery confirmed.', severity: 'success' });
+  } catch (err) {
+    console.error('Failed to confirm delivery:', err.message);
+    setSnack({ open: true, message: 'Error confirming delivery.', severity: 'error' });
+  }
+};
+
+
+
+
+
   // 🔎 Autocomplete location search
   const handleLocationSearch = async (value) => {
     if (!value) return setLocationOptions([]);
@@ -559,40 +626,112 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
 
 {tab === 1 && (
   <Box mt={4}>
-    <Button
-  variant="outlined"
-  color="error"
-  onClick={async () => {
-    const q = query(
-      collection(db, 'millProcessingRequests'),
-      where('millId', '==', auth.currentUser.uid),
-      where('millCleared', '!=', true)
-    );
-    const snapshot = await getDocs(q);
-    await Promise.all(snapshot.docs.map(docSnap =>
-      updateDoc(doc(db, 'millProcessingRequests', docSnap.id), {
-        millCleared: true
-      })
-    ));
-    setSnack({ open: true, message: 'Request history cleared!', severity: 'success' });
-  }}
-  sx={{ mb: 2 }}
->
-  Clear Processing Requests
-</Button>
-
     <Typography variant="h6" gutterBottom>
       Processing Requests
     </Typography>
     <Grid container spacing={2}>
-      {requests.map((req) => (
+        {(() => {
+        const sorted = [...requests].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        const totalPages = Math.ceil(sorted.length / processingItemsPerPage);
+        const paginated = sorted.slice(
+          (processingPage - 1) * processingItemsPerPage,
+          processingPage * processingItemsPerPage
+        );
+
+        return (
+          <>
+            {paginated.map((req) => {
+              const relatedLogistics = logisticsRequests.find(
+                (lr) => lr.requestId === req.id
+              );
+
+              return (
         <Grid item xs={12} sm={6} md={4} key={req.id}>
           <Card sx={{ p: 2, borderRadius: 2 }}>
+            <Typography>
+  📅 <strong>Requested on:</strong>{' '}
+  {req.timestamp ? new Date(req.timestamp).toLocaleString() : 'N/A'}
+</Typography>
+            <Typography><strong>Middleman Name:</strong> {req.middlemanName}</Typography>
             <Typography><strong>Middleman ID:</strong> {req.middlemanId}</Typography>
             <Typography><strong>Rice:</strong> {req.riceType}</Typography>
             <Typography><strong>Quantity:</strong> {req.quantity} Kg</Typography>
             <Typography><strong>Status:</strong> {req.requestStatus}</Typography>
 
+            {/* ✅ Confirm Delivery Button */}
+            {(() => {
+              const relatedLogistics = logisticsRequests.find(
+                (lr) => lr.requestId === req.id
+              );
+
+              if (relatedLogistics?.delivered && !relatedLogistics?.millConfirmed) {
+                return (
+                  <Box mt={2}>
+                    <Typography color="warning.main" fontWeight="bold">
+                      📦 Shipment Delivered – Awaiting Confirmation
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      size="small"
+                      onClick={() => confirmDelivery(relatedLogistics.id)}
+                      sx={{ mt: 1 }}
+                    >
+                      Confirm Delivery
+                    </Button>
+                  </Box>
+                );
+              }
+
+              if (relatedLogistics?.millConfirmed) {
+                return (
+                  <>
+                    <Chip
+                      label="Delivery Confirmed ✅"
+                      color="success"
+                      sx={{ mt: 2 }}
+                    />
+
+                    {/* 🔄 Show Send for Processing / Hold Lot options */}
+                    {!req.processingStatus && (
+                      <Box mt={2}>
+                        <Typography fontWeight="bold">Next Step:</Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={() => markLot(req, 'under_process')}
+                          sx={{ mr: 1 }}
+                        >
+                          Send for Processing
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="warning"
+                          onClick={() => markLot(req, 'pending_lot')}
+                        >
+                          Hold Lot
+                        </Button>
+                      </Box>
+                    )}
+
+                    {req.processingStatus === 'under_process' && (
+                      <Chip label="Under Process 🏭" color="info" sx={{ mt: 2 }} />
+                    )}
+                    {req.processingStatus === 'pending_lot' && (
+                      <Chip label="Lot On Hold ⏸️" color="warning" sx={{ mt: 2 }} />
+                    )}
+                    {req.processingStatus === 'done' && (
+  <Chip label="Processed ✅" color="success" sx={{ mt: 2 }} />
+)}
+
+                  </>
+                );
+              }
+
+              return null;
+            })()}
+
+            {/* ✅ Accept / Decline for new requests */}
             {req.requestStatus === 'pending' && (
               <Box mt={2} display="flex" gap={1}>
                 <Button variant="contained" onClick={() => handleAcceptRequest(req)}>
@@ -604,21 +743,69 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
               </Box>
             )}
 
+            {/* ✅ Cash Collection */}
             {req.paymentStatus === 'cash_pending' && (
-  <Box mt={1}>
-    <Typography>💰 Payment in Cash Pending: ₹{req.processingCost}</Typography>
-    <Button variant="contained" onClick={() => markMillCashCollected(req)} sx={{ mt: 1 }}>
-      Mark Cash as Collected
-    </Button>
-  </Box>
+              <Box mt={1}>
+                <Typography>💰 Payment in Cash Pending: ₹{req.processingCost}</Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => markMillCashCollected(req)}
+                  sx={{ mt: 1 }}
+                >
+                  Mark Cash as Collected
+                </Button>
+              </Box>
+            )}
+            {(req.paymentStatus === 'cash_collected' || req.paymentStatus === 'razorpay_done') && (
+  <Chip
+    label={`💰 Payment Completed –${
+      req.paymentStatus === 'cash_collected' ? 'Cash' : 'Razorpay'
+    }`}
+    color="success"
+    variant="outlined"
+    sx={{ mt: 2 }}
+  />
 )}
+
 
           </Card>
         </Grid>
-      ))}
+      );
+            })}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <Grid item xs={12} mt={2} display="flex" justifyContent="center" alignItems="center">
+                <Button
+                  variant="outlined"
+                  disabled={processingPage === 1}
+                  onClick={() => {setProcessingPage((prev) => Math.max(prev - 1, 1));
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });}}
+                  sx={{ mr: 2 }}
+                >
+                  Previous
+                </Button>
+                <Typography sx={{ lineHeight: '36px' }}>
+                  Page {processingPage} of {totalPages}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  disabled={processingPage === totalPages}
+                  onClick={() => {setProcessingPage((prev) => Math.min(prev + 1, totalPages));
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });}}
+                  sx={{ ml: 2 }}
+                >
+                  Next
+                </Button>
+              </Grid>
+            )}
+          </>
+        );
+      })()}
     </Grid>
   </Box>
 )}
+
 
 
      
@@ -1031,20 +1218,7 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
           {snack.message}
         </Alert>
       </Snackbar>
-      <Dialog open={openDecisionDialog} onClose={() => setOpenDecisionDialog(false)}>
-  <DialogTitle>Accept Request</DialogTitle>
-  <DialogContent>
-    <Typography>Choose what to do with this lot:</Typography>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => markLot(selectedRequest, 'under_process')} variant="contained">
-      Send for Processing
-    </Button>
-    <Button onClick={() => markLot(selectedRequest, 'pending_lot')} variant="outlined">
-      Hold Lot
-    </Button>
-  </DialogActions>
-</Dialog>
+   
 
 
 {millProfile && (

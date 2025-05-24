@@ -14,6 +14,7 @@ import MillDashboard from "./MillDashboard";
 import { VideoCallProvider, useVideoCall } from "./VideoCallManager";
 import IncomingCallDialog from "./IncomingCallDialog";
 import VideoCallUIWrapper from "./VideoCallUIWrapper";
+import LogisticsDashboard from './LogisticsDashboard'; 
 
 // 👇 CallState-aware app content (must be inside provider)
 function AppContent() {
@@ -53,6 +54,14 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
+          <Route
+  path="/logistics-dashboard"
+  element={
+    <ProtectedRoute allowedAccountType="logistics">
+      <LogisticsDashboard />
+    </ProtectedRoute>
+  }
+/>
 
           <Route path="/complete-profile" element={<CompleteProfile />} />
         </Routes>

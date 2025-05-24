@@ -157,6 +157,7 @@ const handleLogin = async () => {
         case 'retailer': navigate('/retailer-dashboard'); break;
         case 'wholesaler': navigate('/wholesaler-dashboard'); break;
         case 'customer': navigate('/customer-dashboard'); break;
+        case 'logistics': navigate('/logistics-dashboard'); break;
         default: alert("Unknown account type.");
       }
     } else {
