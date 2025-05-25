@@ -49,9 +49,24 @@ export default function Login() {
 
       const { accountType } = userData;
       switch (accountType) {
-        case 'farmer': navigate('/farmer-dashboard'); break;
-        case 'middleman': navigate('/middleman-dashboard'); break;
-        case 'mill': navigate('/mill-dashboard'); break;
+        case 'farmer': if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); 
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
+        case 'middleman': if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); 
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
+        case 'mill':if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); // ⚠️ Mixing
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
         case 'wholesaler': navigate('/wholesaler-dashboard'); break;
@@ -100,9 +115,24 @@ const handleFacebookLogin = async () => {
 
       const { accountType } = userData;
       switch (accountType) {
-        case 'farmer': navigate('/farmer-dashboard'); break;
-        case 'middleman': navigate('/middleman-dashboard'); break;
-        case 'mill': navigate('/mill-dashboard'); break;
+        case 'farmer':if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); // ⚠️ Mixing
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
+        case 'middleman': if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); // ⚠️ Mixing
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
+        case 'mill': if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } }); // ⚠️ Mixing
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
         case 'wholesaler': navigate('/wholesaler-dashboard'); break;
@@ -150,9 +180,26 @@ const handleLogin = async () => {
 
       const { accountType } = userData;
       switch (accountType) {
-        case 'farmer': navigate('/farmer-dashboard'); break;
-        case 'middleman': navigate('/middleman-dashboard'); break;
-        case 'mill': navigate('/mill-dashboard'); break;
+        case 'farmer':if (!userData?.faceEnrolled) {
+  navigate("/face-enroll", { state: { uid, accountType } });
+} else {
+  navigate("/face-verify", { state: { uid, nextRoute: `/${accountType}-dashboard` } });
+}
+
+
+break;
+        case 'middleman': if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
+        case 'mill':if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+ break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
         case 'wholesaler': navigate('/wholesaler-dashboard'); break;

@@ -69,7 +69,7 @@ export default function CompleteProfile() {
   };
 
   const handleSkipUpload = () => {
-    navigate(`/${accountType}-dashboard`);
+    navigate('/face-enroll', { state: { uid, accountType } });
   };
 
   const handleUploadImage = async () => {
@@ -100,7 +100,7 @@ export default function CompleteProfile() {
         profilePicture: data.secure_url
       }, { merge: true });
 
-      navigate(`/${accountType}-dashboard`);
+      navigate('/face-enroll', { state: { uid, accountType } });
     } catch (err) {
       alert("Upload failed: " + err.message);
     }

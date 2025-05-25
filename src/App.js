@@ -15,6 +15,8 @@ import { VideoCallProvider, useVideoCall } from "./VideoCallManager";
 import IncomingCallDialog from "./IncomingCallDialog";
 import VideoCallUIWrapper from "./VideoCallUIWrapper";
 import LogisticsDashboard from './LogisticsDashboard'; 
+import FaceEnroll from './FaceEnroll';
+import FaceVerify from './FaceVerify';
 
 // 👇 CallState-aware app content (must be inside provider)
 function AppContent() {
@@ -64,6 +66,9 @@ function AppContent() {
 />
 
           <Route path="/complete-profile" element={<CompleteProfile />} />
+
+          <Route path="/face-enroll" element={<FaceEnroll />} />
+<Route path="/face-verify" element={<FaceVerify />} />
         </Routes>
       </Router>
 
