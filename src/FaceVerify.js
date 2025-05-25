@@ -12,12 +12,21 @@ import {
   Paper,
   Box
 } from "@mui/material";
+import Lottie from "lottie-react";
+import verifyAnim from "./assets/verify.json";
+import successAnim from "./assets/success.json";
+
+
 
 export default function FaceVerify() {
   const webcamRef = useRef(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified] = useState(false);
+
   const { state } = useLocation(); // { uid, nextRoute }
 
   useEffect(() => {
@@ -60,13 +69,24 @@ export default function FaceVerify() {
     }
 
     const distance = faceapi.euclideanDistance(stored, result.descriptor);
-    if (distance < 0.55) {
-      navigate(state.nextRoute);
-    } else {
-      alert("Face mismatch. Access denied.");
-    }
-    setLoading(false);
-  };
+   if (distance < 0.55) {
+  setVerifying(true);        // Start "verifying..." animation
+  setLoading(false);         // Stop loading spinner on button
+
+  setTimeout(() => {
+    setVerifying(false);     // Hide verifying animation
+    setVerified(true);       // Show "Verified ✅" animation
+
+    setTimeout(() => {
+      navigate(state.nextRoute); // Final redirect to dashboard
+    }, 2000); // 2 sec success animation
+  }, 3000); // 3 sec verifying animation
+} else {
+  alert("Face mismatch. Access denied.");
+  setLoading(false);
+}
+
+};
 
   return (
     <Container maxWidth="sm">
@@ -79,32 +99,46 @@ export default function FaceVerify() {
           </Typography>
         </Box>
 
-        <Box
-          sx={{
-            borderRadius: 2,
-            overflow: "hidden",
-            mb: 2,
-            border: "1px solid #ccc"
-          }}
-        >
-          <Webcam
-            ref={webcamRef}
-            screenshotFormat="image/jpeg"
-            style={{ width: "100%", aspectRatio: "4/3" }}
-          />
+        {verifying ? (
+        <Box textAlign="center">
+          <Lottie animationData={verifyAnim} style={{ height: 250 }} />
+          <Typography variant="body1" mt={2}>Verifying identity...</Typography>
         </Box>
+      ) : verified ? (
+        <Box textAlign="center">
+          <Lottie animationData={successAnim} style={{ height: 200 }} />
+          <Typography variant="h6" mt={1} color="green">Verified</Typography>
+        </Box>
+      ) : (
+        <>
+          <Box
+            sx={{
+              borderRadius: 2,
+              overflow: "hidden",
+              mb: 2,
+              border: "1px solid #ccc"
+            }}
+          >
+            <Webcam
+              ref={webcamRef}
+              screenshotFormat="image/jpeg"
+              style={{ width: "100%", aspectRatio: "4/3" }}
+            />
+          </Box>
 
-        <Button
-          fullWidth
-          variant="contained"
-          color="success"
-          size="large"
-          onClick={handleVerify}
-          disabled={!modelsLoaded || loading}
-        >
-          {loading ? <CircularProgress size={24} /> : "Verify & Continue"}
-        </Button>
-      </Paper>
-    </Container>
-  );
+          <Button
+            fullWidth
+            variant="contained"
+            color="success"
+            size="large"
+            onClick={handleVerify}
+            disabled={!modelsLoaded || loading}
+          >
+            {loading ? <CircularProgress size={24} /> : "Verify & Continue"}
+          </Button>
+        </>
+      )}
+    </Paper>
+  </Container>
+);
 }
