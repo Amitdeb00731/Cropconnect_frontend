@@ -91,6 +91,14 @@ const tabLabels = [
 const navigate = useNavigate();
 
 
+const offsetCoords = (lat, lon, index, offsetFactor = 0.0003) => {
+  const angle = (index * 30) % 360; // rotate around circle
+  const dx = Math.cos((angle * Math.PI) / 180) * offsetFactor;
+  const dy = Math.sin((angle * Math.PI) / 180) * offsetFactor;
+  return [lat + dy, lon + dx];
+};
+
+
 const haversineDistance = (lat1, lon1, lat2, lon2) => {
   const toRad = angle => (angle * Math.PI) / 180;
   const R = 6371;
@@ -836,6 +844,10 @@ if (pendingRequests.length === 0) {
         return false;
       })
       .map((req, idx) => {
+
+        const [pickupLatAdj, pickupLonAdj] = offsetCoords(req.pickupLat, req.pickupLon, idx);
+const [dropLatAdj, dropLonAdj] = offsetCoords(req.millLat, req.millLon, idx);
+
         const color =
           mapViewMode === 'delivered'
             ? 'green'
@@ -862,7 +874,7 @@ if (pendingRequests.length === 0) {
 
         return (
           <React.Fragment key={idx}>
-            <Marker position={[req.pickupLat, req.pickupLon]} icon={pickupIcon}>
+            <Marker position={[pickupLatAdj, pickupLonAdj]} icon={pickupIcon}>
               <Popup>
                 <strong>Pickup:</strong> {req.pickupLocation}<br />
                 <strong>Rice:</strong> {req.riceType} ({req.quantity} Kg)<br />
@@ -870,16 +882,16 @@ if (pendingRequests.length === 0) {
                 <strong>Distance:</strong> {distanceKm} km
               </Popup>
             </Marker>
-           <Marker position={[req.millLat, req.millLon]} icon={dropIcon}>
+           <Marker position={[dropLatAdj, dropLonAdj]} icon={dropIcon}>
               <Popup>
                 <strong>Drop:</strong> {req.millLocation}<br />
                 <strong>Mill:</strong> {req.millName}
               </Popup>
             </Marker>
 
-            {routeLines[req.id] && (
+           {routeLines[req.id] && (
   <Polyline
-    positions={routeLines[req.id]}
+    positions={routeLines[req.id].map(([lat, lon]) => offsetCoords(lat, lon, idx))}
     color={color}
   />
 )}
