@@ -17,6 +17,8 @@ import VideoCallUIWrapper from "./VideoCallUIWrapper";
 import LogisticsDashboard from './LogisticsDashboard'; 
 import FaceEnroll from './FaceEnroll';
 import FaceVerify from './FaceVerify';
+import AdminDashboard from './AdminDashboard';
+
 
 // 👇 CallState-aware app content (must be inside provider)
 function AppContent() {
@@ -29,6 +31,16 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/register" element={<RegisterFarmer />} />
           <Route path="/login" element={<Login />} />
+          
+          <Route
+  path="/admin-dashboard"
+  element={
+    <ProtectedRoute allowedAccountType="admin">
+      <AdminDashboard />
+    </ProtectedRoute>
+  }
+/>
+
 
           <Route
             path="/farmer-dashboard"

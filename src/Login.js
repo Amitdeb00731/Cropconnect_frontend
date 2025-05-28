@@ -205,6 +205,14 @@ break;
         case 'wholesaler': navigate('/wholesaler-dashboard'); break;
         case 'customer': navigate('/customer-dashboard'); break;
         case 'logistics': navigate('/logistics-dashboard'); break;
+        case 'admin':
+  if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid, nextRoute: `/admin-dashboard` } });
+  }
+  break;
+
         default: alert("Unknown account type.");
       }
     } else {
