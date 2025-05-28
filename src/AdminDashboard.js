@@ -9,6 +9,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import UsersTab from './UsersTab';
+import { useTheme, useMediaQuery } from '@mui/material';
 
 const drawerWidth = 240;
 
@@ -25,6 +26,13 @@ const navItems = [
 
 
 export default function AdminDashboard() {
+
+  
+const theme = useTheme();
+const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedTab, setSelectedTab] = useState('Overview');
 
@@ -71,21 +79,38 @@ export default function AdminDashboard() {
         </Toolbar>
       </AppBar>
       <Drawer
-        variant="permanent"
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
-          display: { xs: 'none', sm: 'block' },
-        }}
-        open
-      >
-        {drawer}
-      </Drawer>
+  variant="temporary"
+  open={mobileOpen}
+  onClose={handleDrawerToggle}
+  ModalProps={{ keepMounted: true }}
+  sx={{
+    display: { xs: 'block', sm: 'none' },
+    '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+  }}
+>
+  {drawer}
+</Drawer>
+
+{/* Permanent Drawer for Desktop */}
+<Drawer
+  variant="permanent"
+  sx={{
+    display: { xs: 'none', sm: 'block' },
+    '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' },
+  }}
+  open
+>
+  {drawer}
+</Drawer>
       <Box
-        component="main"
-        sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - ${drawerWidth}px)` } }}
-      >
+  component="main"
+  sx={{
+    flexGrow: 1,
+    p: 3,
+    ml: { sm: `${drawerWidth}px` }, // Add left margin for permanent drawer
+  }}
+>
+
         <Toolbar />
         {selectedTab === 'Users' && <UsersTab />}
 
