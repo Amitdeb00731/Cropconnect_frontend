@@ -14,13 +14,7 @@ import { useTheme, useMediaQuery } from '@mui/material';
 const drawerWidth = 240;
 
 const navItems = [
-  { label: 'Overview', icon: <DashboardIcon /> },
   { label: 'Users', icon: <PeopleIcon /> },
-  { label: 'Harvests', icon: <InventoryIcon /> },
-  { label: 'Logistics', icon: <LocalShippingIcon /> },
-  { label: 'Transactions', icon: <ReceiptLongIcon /> },
-  { label: 'Invoices', icon: <BarChartIcon /> },
-  { label: 'Notifications', icon: <NotificationsIcon /> }
 ];
 
 
