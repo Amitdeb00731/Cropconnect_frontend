@@ -62,6 +62,10 @@ import {
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Lottie from 'lottie-react';
+import { Player } from '@lottiefiles/react-lottie-player';
+import razorpayLoadingAnim from './assets/razorpay-loading.json'; // ✅ Make sure this file exists
+
 
 
 
@@ -136,6 +140,9 @@ const tabLabels = [
   "Messages"
 ];
 const [proposals, setProposals] = useState([]);
+
+const [isRazorpayLoading, setIsRazorpayLoading] = useState(false);
+
 
 const [pickupLocation, setPickupLocation] = useState('');
 const [pickupDate, setPickupDate] = useState(null);
@@ -901,8 +908,10 @@ const handleMillCashPayment = async (req) => {
 
 
 const handleMillRazorpayPayment = async (req) => {
+  setIsRazorpayLoading(true);
   const scriptLoaded = await loadRazorpayScript();
   if (!scriptLoaded) {
+    setIsRazorpayLoading(false);
     setSnack({ open: true, message: 'Razorpay SDK failed to load', severity: 'error' });
     return;
   }
@@ -922,6 +931,7 @@ const handleMillRazorpayPayment = async (req) => {
       currency: orderData.currency,
       order_id: orderData.order_id,
       handler: async function (response) {
+        setIsRazorpayLoading(false); 
         await updateDoc(doc(db, 'millProcessingRequests', req.id), {
           paymentStatus: 'razorpay_done',
           paymentDetails: {
@@ -961,13 +971,21 @@ const handleMillRazorpayPayment = async (req) => {
         });
 
         setSnack({ open: true, message: 'Payment done via Razorpay and invoice saved!', severity: 'success' });
+      },
+      modal: {
+        ondismiss: function () {
+          setIsRazorpayLoading(false); // ✅ Hide loader on cancel
+        }
       }
     };
 
     const rzp = new window.Razorpay(options);
-    rzp.open();
+    setTimeout(() => {
+  rzp.open();
+}, 100);
   } catch (err) {
     console.error('Razorpay error:', err);
+    setIsRazorpayLoading(false);
     setSnack({ open: true, message: 'Payment failed', severity: 'error' });
   }
 };
@@ -4340,6 +4358,35 @@ const getActiveStep = (req, logisticsReq = {}) => {
   </DialogActions>
 </Dialog>
 
+ {isRazorpayLoading && (
+  <Box
+    sx={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      backdropFilter: 'blur(5px)',
+      backgroundColor: 'rgba(255,255,255,0.7)',
+      zIndex: 9999,
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexDirection: 'column',
+      padding: 2
+    }}
+  >
+    <Player
+      autoplay
+      loop
+      src={razorpayLoadingAnim}
+      style={{ height: 150, width: 150 }}
+    />
+    <Typography variant="body1" sx={{ mt: 2, fontWeight: 600 }}>
+      Connecting to Razorpay...
+    </Typography>
+  </Box>
+)}
 
 
 
