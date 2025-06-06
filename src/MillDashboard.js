@@ -261,6 +261,9 @@ const markProcessingDone = async (id) => {
   processingCost: parseFloat(reqSnap.data().processingCost || 0) || 0  // Set this if you’re not already doing so
 });
 
+await updateDoc(doc(db, 'logisticsRequests', reqSnap.data().logisticsRequestId), {
+  processingCompleted: true
+});
 
     await addDoc(collection(db, 'notifications'), {
       userId: reqSnap.data().middlemanId,

@@ -165,7 +165,9 @@ const markAsDeliveredWithImages = async (id, imageUrls) => {
   await updateDoc(reqRef, {
     delivered: true,
     deliveryTimestamp: Date.now(),
-    deliveryProofImages: imageUrls
+    deliveryProofImages: imageUrls,
+    forward: true, // reinforce forward status
+    reverseLogistics: false // mark that reverse delivery has not started
   });
 
   await addDoc(collection(db, 'notifications'), {
@@ -179,6 +181,7 @@ const markAsDeliveredWithImages = async (id, imageUrls) => {
   setProofImages([]);
   setSnack({ open: true, message: 'Marked as delivered with proof!', severity: 'success' });
 };
+
 
 const uploadProofImages = async (files, requestId) => {
   const uploadedUrls = [];
@@ -311,6 +314,15 @@ useEffect(() => {
 
 
 
+const updateReverseStatusInProcessing = async (processingRequestId, updates) => {
+  if (!processingRequestId) return;
+  const ref = doc(db, 'millProcessingRequests', processingRequestId);
+  await updateDoc(ref, updates);
+};
+
+
+
+
 
 
   return (
@@ -366,6 +378,10 @@ if (pendingRequests.length === 0) {
         <Grid item xs={12} sm={6} md={4} key={req.id}>
           <Card>
             <CardContent>
+              {req.forward && (
+  <Chip label="Forward" color="primary" size="small" sx={{ mt: 1 }} />
+)}
+
               <Typography variant="subtitle1">{req.riceType} — {req.quantity} Kg</Typography>
               <Typography variant="body2">From: {req.middlemanName}</Typography>
               <Typography variant="body2">Mill: {req.millName} ({req.millLocation})</Typography>
@@ -681,70 +697,203 @@ if (pendingRequests.length === 0) {
             <>
               {paginatedDelivered.map((req) => (
           <Grid item xs={12} sm={6} md={4} key={req.id}>
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle1">{req.riceType} — {req.quantity} Kg</Typography>
-                <Typography variant="body2">From: {req.middlemanName}</Typography>
-                <Typography variant="body2">Mill: {req.millName} ({req.millLocation})</Typography>
-                <Typography variant="body2">Pickup: {req.pickupLocation}</Typography>
-                {req.pickupLat && req.pickupLon && req.millLat && req.millLon && (
-  <Box sx={{ mt: 1, mb: 1 }}>
-    <MapContainer
-      center={[req.pickupLat, req.pickupLon]}
-      zoom={8}
-      scrollWheelZoom={false}
-      style={{ height: 200, width: '100%', borderRadius: 10 }}
-    >
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+  <Card>
+    <CardContent>
 
-      <Marker position={[req.pickupLat, req.pickupLon]} icon={pickupIcon}>
-        <Popup>Pickup: {req.pickupLocation}</Popup>
-      </Marker>
+      {/* Direction Chip */}
+     {!req.reverseDelivered && (
+  req.reverseLogistics ? (
+    <Chip label="Reverse" color="secondary" size="small" sx={{ mr: 1, mt: 1 }} />
+  ) : req.forward ? (
+    <Chip label="Forward" color="primary" size="small" sx={{ mr: 1, mt: 1 }} />
+  ) : null
+)}
 
-      <Marker position={[req.millLat, req.millLon]} icon={dropIcon}>
-        <Popup>Drop: {req.millLocation}</Popup>
-      </Marker>
 
-      {routeLines[req.id] ? (
-        <Polyline
-          positions={routeLines[req.id]}
-          color="blue"
-        />
-      ) : (
-        <Polyline
-          positions={[[req.pickupLat, req.pickupLon], [req.millLat, req.millLon]]}
-          color="gray"
+      {/* Warning Chip for pending reverse delivery */}
+      {req.reverseLogistics === false && !req.reverseDelivered && (
+        <Chip
+          label="Delivery Back to Middleman Pending"
+          color="warning"
+          size="small"
+          sx={{ mt: 1 }}
         />
       )}
-    </MapContainer>
 
-    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-      Distance: {haversineDistance(req.pickupLat, req.pickupLon, req.millLat, req.millLon).toFixed(2)} km
-    </Typography>
-  </Box>
+      {/* Processing Logic */}
+      {req.reverseDelivered ? (
+  <Chip
+    label="Delivered to Middleman ✅"
+    color="success"
+    size="small"
+    sx={{ mt: 1, ml: 1 }}
+  />
+) : (
+  req.processingCompleted ? (
+    <>
+      {/* Show only before final reverse delivery is done */}
+      <Chip
+        label="Processing Completed by Mill"
+        color="success"
+        size="small"
+        sx={{ mt: 1, mr: 1 }}
+      />
+
+      {/* Step 1: Mark Picked Up from Mill */}
+      {!req.reversePickedUp && (
+        <Button
+          variant="contained"
+          size="small"
+          color="warning"
+          sx={{ mt: 1, ml: 1 }}
+          onClick={async () => {
+            await updateDoc(doc(db, 'logisticsRequests', req.id), {
+              reversePickedUp: true,
+              forward: false,
+              reverseLogistics: true,
+              requestId: req.requestId || req.id
+            });
+
+            await updateReverseStatusInProcessing(req.requestId || req.id, {
+              reversePickedUp: true
+            });
+
+            await addDoc(collection(db, 'notifications'), {
+              userId: req.middlemanId,
+              type: 'reverse_picked_up',
+              message: `Processed lot of ${req.riceType} picked up from mill.`,
+              seen: false,
+              timestamp: Date.now()
+            });
+          }}
+        >
+          🔁 Mark Picked Up from Mill
+        </Button>
+      )}
+
+      {/* Step 2: Mark In Transit */}
+      {req.reversePickedUp && !req.reverseInTransit && (
+        <Button
+          variant="contained"
+          size="small"
+          color="info"
+          sx={{ mt: 1, ml: 1 }}
+          onClick={async () => {
+            await updateDoc(doc(db, 'logisticsRequests', req.id), {
+              reverseInTransit: true
+            });
+
+            await updateReverseStatusInProcessing(req.requestId || req.id, {
+              reverseInTransit: true
+            });
+          }}
+        >
+          🚚 Mark In Transit (Back)
+        </Button>
+      )}
+
+      {/* Step 3: Mark Delivered to Middleman */}
+      {req.reverseInTransit && !req.reverseDelivered && (
+        <Button
+          variant="contained"
+          size="small"
+          color="success"
+          sx={{ mt: 1, ml: 1 }}
+          onClick={async () => {
+            await updateDoc(doc(db, 'logisticsRequests', req.id), {
+              reverseDelivered: true,
+              reverseDeliveryTimestamp: Date.now()
+            });
+
+            await updateReverseStatusInProcessing(req.requestId || req.id, {
+              reverseDelivered: true
+            });
+
+            await addDoc(collection(db, 'notifications'), {
+              userId: req.middlemanId,
+              type: 'reverse_delivered',
+              message: `Your processed lot of ${req.riceType} has been delivered back to you.`,
+              seen: false,
+              timestamp: Date.now()
+            });
+          }}
+        >
+          ✅ Mark Delivered to Middleman
+        </Button>
+      )}
+    </>
+  ) : (
+    <Chip
+      label="Processing Pending at Mill"
+      color="error"
+      size="small"
+      sx={{ mt: 1 }}
+    />
+  )
 )}
 
-                <Typography variant="body2">Pickup Date: {new Date(req.pickupDate).toLocaleDateString()}</Typography>
-                <Typography variant="body2">Pickup Time: {req.pickupTime}</Typography>
-                {req.deliveryTimestamp && (
-  <>
-    <Typography variant="body2">
-      Delivery Date: {new Date(req.deliveryTimestamp).toLocaleDateString()}
-    </Typography>
-    <Typography variant="body2">
-      Delivery Time: {new Date(req.deliveryTimestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit'
-      })}
-    </Typography>
-  </>
-)}
 
-                <Chip label="Delivered ✅" color="success" variant="outlined" sx={{ mt: 1 }} />
-                
-              </CardContent>
-            </Card>
-          </Grid>
+      {/* Delivery Summary */}
+      <Typography variant="subtitle1">
+        {req.riceType} — {req.quantity} Kg
+      </Typography>
+      <Typography variant="body2">From: {req.middlemanName}</Typography>
+      <Typography variant="body2">Mill: {req.millName} ({req.millLocation})</Typography>
+      <Typography variant="body2">Pickup: {req.pickupLocation}</Typography>
+
+      {/* Map & Distance */}
+      {req.pickupLat && req.pickupLon && req.millLat && req.millLon && (
+        <Box sx={{ mt: 1, mb: 1 }}>
+          <MapContainer
+            center={[req.pickupLat, req.pickupLon]}
+            zoom={8}
+            scrollWheelZoom={false}
+            style={{ height: 200, width: '100%', borderRadius: 10 }}
+          >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <Marker position={[req.pickupLat, req.pickupLon]} icon={pickupIcon}>
+              <Popup>Pickup: {req.pickupLocation}</Popup>
+            </Marker>
+            <Marker position={[req.millLat, req.millLon]} icon={dropIcon}>
+              <Popup>Drop: {req.millLocation}</Popup>
+            </Marker>
+            <Polyline
+              positions={
+                routeLines[req.id]
+                  ? routeLines[req.id]
+                  : [[req.pickupLat, req.pickupLon], [req.millLat, req.millLon]]
+              }
+              color={routeLines[req.id] ? 'blue' : 'gray'}
+            />
+          </MapContainer>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Distance: {haversineDistance(req.pickupLat, req.pickupLon, req.millLat, req.millLon).toFixed(2)} km
+          </Typography>
+        </Box>
+      )}
+
+      {/* Timestamp */}
+      <Typography variant="body2">Pickup Date: {new Date(req.pickupDate).toLocaleDateString()}</Typography>
+      <Typography variant="body2">Pickup Time: {req.pickupTime}</Typography>
+      {req.deliveryTimestamp && (
+        <>
+          <Typography variant="body2">
+            Delivery Date: {new Date(req.deliveryTimestamp).toLocaleDateString()}
+          </Typography>
+          <Typography variant="body2">
+            Delivery Time: {new Date(req.deliveryTimestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </Typography>
+        </>
+      )}
+
+      <Chip label="Delivered ✅" color="success" variant="outlined" sx={{ mt: 1 }} />
+    </CardContent>
+  </Card>
+</Grid>
+
             ))}
          {/* Pagination Controls */}
               {deliveredTotalPages > 1 && (

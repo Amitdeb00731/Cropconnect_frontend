@@ -267,6 +267,17 @@ const [toDate, setToDate] = useState(null);
 
 const [specificDate, setSpecificDate] = useState(null);
 
+useEffect(() => {
+  const unsub = onSnapshot(
+    query(collection(db, 'logisticsRequests'), where('middlemanId', '==', auth.currentUser?.uid)),
+    (snap) => {
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLogisticsRequests(list); // make sure this state exists
+    }
+  );
+
+  return () => unsub();
+}, []);
 
 
 const handleSendLogisticsRequest = async () => {
@@ -302,7 +313,7 @@ const handleSendLogisticsRequest = async () => {
       await deleteDoc(doc(db, 'logisticsRequests', declined.id));
     }
 
-    await addDoc(collection(db, 'logisticsRequests'), {
+    const docRef = await addDoc(collection(db, 'logisticsRequests'), {
       middlemanId,
       middlemanName,
       millId: selectedLogisticsRequest.millId,
@@ -317,6 +328,8 @@ const handleSendLogisticsRequest = async () => {
       millLocation: millData.location || 'N/A',
       requestId: selectedLogisticsRequest.id,
       status: 'pending',
+      forward: Boolean(true),
+reverseLogistics: Boolean(false),
 
       // 🗺️ Store coordinates
       pickupLat,
@@ -324,6 +337,9 @@ const handleSendLogisticsRequest = async () => {
       millLat: millData.latitude || null,
       millLon: millData.longitude || null,
     });
+   await updateDoc(doc(db, 'millProcessingRequests', selectedLogisticsRequest.id), {
+  logisticsRequestId: docRef.id
+});
 
     setSnack({ open: true, message: 'Logistics request sent!', severity: 'success' });
     setLogisticsDialogOpen(false);
@@ -634,7 +650,15 @@ useEffect(() => {
 
     // Update visible list (only ones not cleared)
     const visible = enriched.filter(r => !r.middlemanCleared);
-    setProcessingRequests(visible);
+    // Enrich each processing request with reverse delivery status
+
+   const enrichedVisible = visible.map((req) => {
+  return req;
+});
+
+
+setProcessingRequests(enrichedVisible);
+
 
     // Handle restoration for declined requests
    for (const req of enriched) {
@@ -727,6 +751,23 @@ const handleGenerateCombinedInvoice = async () => {
 
 const addToProcessedInventory = async (req) => {
   try {
+    // 🚫 BLOCK unless reverseDelivered is true
+    if (!req.reverseDelivered) {
+  setSnack({
+    open: true,
+    message: '❌ Cannot add to inventory until logistics completes return delivery.',
+    severity: 'warning'
+  });
+  return;
+}
+
+
+    // ✅ Proceed only if not already added
+    if (req.inventoryAdded) {
+      setSnack({ open: true, message: 'Already added to inventory.', severity: 'info' });
+      return;
+    }
+
     const quantity = parseFloat(req.quantity);
     if (isNaN(quantity) || quantity <= 0) throw new Error("Invalid quantity");
 
@@ -756,20 +797,27 @@ const addToProcessedInventory = async (req) => {
       });
     }
 
-    // ✅ Mark the request as processed in Firestore
     await updateDoc(doc(db, 'millProcessingRequests', req.id), {
-      inventoryAdded: true
-    });
+  inventoryAdded: true,
+  reverseInventoryAdded: true  // ✅ THIS IS WHAT TIMELINE NEEDS
+});
 
-    // ✅ Also update local state to disable the button immediately
+if (req.logisticsRequestId) {
+  await updateDoc(doc(db, 'logisticsRequests', req.logisticsRequestId), {
+    reverseInventoryAdded: true
+  });
+}
+
+
     setInventoryAddedIds(prev => [...prev, req.id]);
-
     setSnack({ open: true, message: 'Inventory updated successfully!', severity: 'success' });
   } catch (err) {
     console.error("Error adding to inventory:", err);
     setSnack({ open: true, message: 'Failed to add to inventory.', severity: 'error' });
   }
 };
+
+
 
 const generateCashInvoiceAfterConfirmation = async (req) => {
   try {
@@ -3495,6 +3543,30 @@ const getActiveStep = (req, logisticsReq = {}) => {
                           </Step>
                         ))}
                       </Stepper>
+                     <Typography variant="subtitle2" sx={{ mt: 2 }}>
+  🚚 Delivery Back from Mill
+</Typography>
+<Stepper
+  activeStep={
+    req.reverseInventoryAdded ? 4 :
+    req.reverseDelivered ? 3 :
+    req.reverseInTransit ? 2 :
+    req.reversePickedUp ? 1 : 0
+  }
+  alternativeLabel
+>
+  <Step><StepLabel>Picked up from Mill</StepLabel></Step>
+  <Step><StepLabel>In Transit</StepLabel></Step>
+  <Step><StepLabel>Delivered to You</StepLabel></Step>
+  <Step><StepLabel>Added to Inventory</StepLabel></Step>
+</Stepper>
+
+
+
+
+
+
+
                     </Box>
                   </Box>
 
@@ -3649,16 +3721,23 @@ const getActiveStep = (req, logisticsReq = {}) => {
                       ) : (
                         <>
                           <Typography sx={{ mt: 1 }}>✅ Payment Complete</Typography>
-                          <Button
-                            variant="contained"
-                            color="success"
-                            size="small"
-                            sx={{ mt: 2 }}
-                            onClick={() => addToProcessedInventory(req)}
-                            disabled={req.inventoryAdded}
-                          >
-                            {req.inventoryAdded ? 'Added' : 'Add to Inventory'}
-                          </Button>
+                        <Button
+  variant="contained"
+  color={req.reverseDelivered ? 'success' : 'warning'}
+  size="small"
+  sx={{ mt: 2 }}
+  onClick={() => addToProcessedInventory(req)}
+  disabled={req.inventoryAdded || !req.reverseDelivered}
+>
+  {req.inventoryAdded
+    ? 'Added'
+    : req.reverseDelivered
+    ? 'Add to Inventory'
+    : '🚚 Awaiting Return Delivery'}
+</Button>
+
+
+
                         </>
                       )}
                     </Box>
