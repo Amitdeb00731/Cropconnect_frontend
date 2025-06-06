@@ -108,7 +108,7 @@ export const generateInvoicePDF = async (purchase) => {
 };
 
 // ✅ MILL INVOICE GENERATOR
-export const generateMillInvoicePDF = async (invoice) => {
+export const generateMillInvoicePDF = async (invoice, options = {}) => {
   const doc = new jsPDF();
   const rupee = "Rs.";
 
@@ -190,7 +190,12 @@ doc.text(addressLines, 14, 75); // Start just below the box
     { align: "center" }
   );
 
+  if (options.returnPdfDoc) {
+  return doc;
+} else {
   doc.save(`MillInvoice_${invoice.id}.pdf`);
+}
+
 };
 
 

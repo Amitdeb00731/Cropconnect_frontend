@@ -33,7 +33,9 @@ import { startOfMonth, endOfMonth, startOfWeek, eachDayOfInterval, format } from
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line
 } from 'recharts';
-
+import MillInvoiceDownloadButton from './MillInvoiceDownloadButton';
+import MillInvoicePreviewDialog from './MillInvoicePreviewDialog';
+import { generateCombinedInvoicePDF } from './InvoiceGenerator';
 
 
 
@@ -61,7 +63,13 @@ export default function MillDashboard() {
   const [processingPage, setProcessingPage] = useState(1);
 const processingItemsPerPage = 3;
 
+const [selectedInvoice, setSelectedInvoice] = useState(null);
+const [previewOpen, setPreviewOpen] = useState(false);
 
+const openPreviewDialog = (txn) => {
+  setSelectedInvoice(txn);
+  setPreviewOpen(true);
+};
 
   const [logisticsRequests, setLogisticsRequests] = useState([]);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
@@ -476,6 +484,41 @@ const handleDeclineRequest = async (request) => {
     console.error('Failed to confirm delivery:', err.message);
     setSnack({ open: true, message: 'Error confirming delivery.', severity: 'error' });
   }
+};
+
+
+
+
+const handleBulkDownload = async () => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const filtered = millTransactions
+    .filter(txn => txn.millId === uid)
+    .filter(txn => {
+      const date = new Date(txn.paymentTimestamp || txn.timestamp);
+      if (txnFilter === 'today') return isToday(date);
+      if (txnFilter === 'week') return isThisWeek(date);
+      if (txnFilter === 'month') return isThisMonth(date);
+      if (txnFilter === 'year') return isThisYear(date);
+      return true; // 'all'
+    })
+    .filter(txn => {
+      if (paymentMethodFilter === 'all') return true;
+      return txn.paymentMethod === paymentMethodFilter;
+    })
+    .filter(txn => {
+      if (!searchRiceType.trim()) return true;
+      return txn.riceType?.toLowerCase().includes(searchRiceType.trim().toLowerCase());
+    });
+
+  if (filtered.length === 0) {
+    setSnack({ open: true, message: 'No transactions to download.', severity: 'info' });
+    return;
+  }
+
+  await generateCombinedInvoicePDF(filtered);
+  setSnack({ open: true, message: 'Combined invoice downloaded!', severity: 'success' });
 };
 
 
@@ -1157,6 +1200,14 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
           <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>
             Total Transaction Value: ₹{totalAmount.toFixed(2)}
           </Typography>
+          <Button
+  variant="contained"
+  color="primary"
+  onClick={() => handleBulkDownload()}
+>
+  Download Filtered Invoices (PDF)
+</Button>
+
 
           {paginated.length === 0 ? (
             <Typography>No transactions found for selected filters.</Typography>
@@ -1176,6 +1227,12 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
                   <Typography>
                     Middleman: {txn.middlemanName || "N/A"}
                   </Typography>
+                   <Box mt={2}>
+     <Button variant="outlined" onClick={() => openPreviewDialog(txn)}>
+  Preview Invoice
+</Button>
+
+    </Box>
                 </CardContent>
               </Card>
             ))
@@ -1291,6 +1348,14 @@ const pendingLot = requests.filter(r => r.processingStatus === 'pending_lot');
 </Drawer>
 
 
+{selectedInvoice && (
+  <MillInvoicePreviewDialog
+    open={previewOpen}
+    onClose={() => setPreviewOpen(false)}
+    invoice={selectedInvoice}
+    millProfile={millProfile}
+  />
+)}
 
 
     </Container>
