@@ -54,6 +54,8 @@ const dropIcon = new L.Icon({
 
 const [routeLines, setRouteLines] = useState({});
 
+const [deliveryTypeFilter, setDeliveryTypeFilter] = useState('all');
+
 
   const [deliveredFilter, setDeliveredFilter] = useState('all');
 const [customStartDate, setCustomStartDate] = useState('');
@@ -279,8 +281,13 @@ const deliveredRequests = sorted.filter(req => {
   if (pickupFilter && !req.pickupLocation?.toLowerCase().includes(pickupFilter.toLowerCase())) return false;
   if (dropFilter && !req.millLocation?.toLowerCase().includes(dropFilter.toLowerCase())) return false;
 
+    if (deliveryTypeFilter === 'mill_only' && req.reverseDelivered) return false;
+  if (deliveryTypeFilter === 'mill_and_middleman' && !req.reverseDelivered) return false;
+
+
   return true;
 });
+
 
 const pendingRequests = sorted.filter(req => !req.delivered);
 
@@ -600,6 +607,21 @@ if (pendingRequests.length === 0) {
 {tab === 2 && (
   <Box mt={2}>
     <Grid container spacing={2} sx={{ mb: 2 }}>
+    <Grid item xs={12} sm={4} md={3}>
+  <TextField
+    select
+    label="Delivery Type"
+    value={deliveryTypeFilter}
+    onChange={(e) => setDeliveryTypeFilter(e.target.value)}
+    fullWidth
+    size="small"
+  >
+    <MenuItem value="all">All Deliveries</MenuItem>
+    <MenuItem value="mill_only">To Mill Only</MenuItem>
+    <MenuItem value="mill_and_middleman">To Mill + Back</MenuItem>
+  </TextField>
+</Grid>
+
   <Grid item xs={12} sm={4}>
     <TextField
       select
