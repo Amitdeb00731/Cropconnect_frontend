@@ -17,7 +17,7 @@ import bidderAnim from './assets/bidder-lottie.json';
 
 
 
-export default function AuctionChatModal({ open, onClose, auctionId }) {
+export default function AuctionChatModal({ open, onClose, auctionId,  auction }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [userProfile, setUserProfile] = useState(null);
@@ -267,8 +267,12 @@ const handleSend = async () => {
           <TextField
             fullWidth
             size="small"
-            value={newMessage}
+            value={auction?.status === 'closed' ? '' : newMessage}
             onChange={(e) => {
+
+              if (auction?.status === 'closed') return;
+
+
               setNewMessage(e.target.value);
 
               if (!auth.currentUser || !authorized) return;
@@ -294,12 +298,23 @@ const handleSend = async () => {
                 });
               }, 1500);
             }}
-            placeholder="Type your message..."
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder={auction?.status === 'closed' ? '🚫 Auction ended. Chat disabled.' : 'Type your message...'}
+            disabled={auction?.status === 'closed'}
+            onKeyDown={(e) => e.key === 'Enter' && auction?.status !== 'closed' && handleSend()}
           />
-          <Button onClick={handleSend} variant="contained">
-            Send
-          </Button>
+          <Button
+      onClick={handleSend}
+      variant="contained"
+      disabled={auction?.status === 'closed'}
+      sx={{ mt: 1 }}
+    >
+      Send
+    </Button>
+    {auction?.status === 'closed' && (
+      <Typography variant="caption" color="error" mt={1} align="center">
+        🚫 This auction has ended. Messaging is disabled.
+      </Typography>
+    )}
         </DialogActions>
       )}
     </Dialog>

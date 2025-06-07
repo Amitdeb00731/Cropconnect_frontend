@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, Box, Snackbar, Alert, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
-  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton, Tabs, Tab
+  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton, Tabs, Tab, Chip
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
@@ -37,6 +37,7 @@ export default function WholesalerDashboard() {
 
   const [chatAuctionId, setChatAuctionId] = useState(null);
 
+const [chatAuctionData, setChatAuctionData] = useState(null);
 
 
 
@@ -220,12 +221,13 @@ const handlePlaceBid = async () => {
   try {
     const userSnap = await getDoc(doc(db, 'users', userId));
     const wholesalerName = userSnap.exists() ? userSnap.data().name : 'Unknown';
-
+    const profilePicture = userSnap.exists() ? userSnap.data().profilePicture : null;
     // Save the bid
     const bidRef = doc(collection(db, 'auctions', auction.id, 'bids'));
     await setDoc(bidRef, {
       wholesalerId: userId,
       wholesalerName,
+      profilePicture,
       amount: bid,
       bidTime: Date.now()
     });
@@ -442,7 +444,20 @@ const handlePlaceBid = async () => {
       <Grid container spacing={2}>
         {liveAuctions.map(auction => (
           <Grid item xs={12} md={6} key={auction.id}>
-           <Paper sx={{ p: 2, borderRadius: 2 }}>
+           <Paper sx={{ p: 2, borderRadius: 2, position: 'relative' }}>
+  <Chip
+    label={auction.status === 'closed' ? 'Closed' : 'Live'}
+    color={auction.status === 'closed' ? 'default' : 'success'}
+    size="small"
+    sx={{
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      zIndex: 1,
+      fontWeight: 'bold'
+    }}
+  />
+
   {auction.images && auction.images.length > 0 && (
     <Box mb={1} display="flex" gap={1} overflow="auto">
       {auction.images.map((img, idx) => (
@@ -506,7 +521,19 @@ const handlePlaceBid = async () => {
 
 <Button
   variant="outlined"
-  onClick={() => setChatAuctionId(auction.id)}
+  onClick={() => {
+  if (auction.status === 'closed') {
+    setSnack({
+      open: true,
+      message: '❌ Auction already ended. Chat is disabled.',
+      severity: 'error'
+    });
+    return;
+  }
+  setChatAuctionId(auction.id);
+  setChatAuctionData(auction); // Also store the auction object itself
+}}
+
 >
   Open Chat
 </Button>
@@ -711,8 +738,12 @@ const handlePlaceBid = async () => {
 {chatAuctionId && (
   <AuctionChatModal
     auctionId={chatAuctionId}
+    auction={chatAuctionData}
     open={Boolean(chatAuctionId)}
-    onClose={() => setChatAuctionId(null)}
+    onClose={() => {
+      setChatAuctionId(null);
+      setChatAuctionData(null);
+    }}
   />
 )}
 

@@ -146,6 +146,8 @@ const [proposals, setProposals] = useState([]);
 
 const [isRazorpayLoading, setIsRazorpayLoading] = useState(false);
 
+const [chatAuctionData, setChatAuctionData] = useState(null);
+
 
 const [chatAuctionId, setChatAuctionId] = useState(null);
 
@@ -275,7 +277,11 @@ useEffect(() => {
     for (const docSnap of snap.docs) {
       const auctionId = docSnap.id;
       const bidsSnap = await getDocs(collection(db, 'auctions', auctionId, 'bids'));
-      bidsMap[auctionId] = bidsSnap.docs.map(bid => bid.data());
+     bidsMap[auctionId] = bidsSnap.docs
+  .map(bid => bid.data())
+  .sort((a, b) => b.amount - a.amount)
+  .map((bid, i) => ({ ...bid, isHighest: i === 0 }));
+
     }
 
     setBidsByAuction(bidsMap);
@@ -4322,7 +4328,19 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
 
   <Button
   variant="outlined"
-  onClick={() => setChatAuctionId(auction.id)}
+  onClick={() => {
+  if (auction.status === 'closed') {
+    setSnack({
+      open: true,
+      message: '❌ Auction already ended. Chat is disabled.',
+      severity: 'error'
+    });
+    return;
+  }
+  setChatAuctionId(auction.id);
+  setChatAuctionData(auction); // Also store the auction object itself
+}}
+
 >
   Open Chat
 </Button>
@@ -4360,19 +4378,35 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
   </Box>
 
 
-  <Box mt={2}>
-  <Typography variant="subtitle2">Bids Received:</Typography>
+<Box mt={2}>
+  <Typography variant="subtitle2" gutterBottom>Bids Received:</Typography>
   {bidsByAuction[auction.id]?.length > 0 ? (
     bidsByAuction[auction.id].map((bid, index) => (
-      <Box key={index} display="flex" justifyContent="space-between">
-        <Typography>{bid.wholesalerName}</Typography>
-        <Typography>₹{bid.amount}</Typography>
-      </Box>
+      <Card key={index} variant="outlined" sx={{ mb: 1, borderColor: bid.isHighest ? 'green' : 'grey.300' }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <Box display="flex" alignItems="center" gap={2}>
+              <Avatar src={bid.profilePicture || ''} />
+              <Box>
+                <Typography variant="subtitle1">{bid.wholesalerName}</Typography>
+                <Typography variant="body2" color="text.secondary">₹{bid.amount} per Kg</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Placed: {new Date(bid.bidTime).toLocaleString()}
+                </Typography>
+              </Box>
+            </Box>
+            {bid.isHighest && (
+              <Chip label="Highest Bid" color="success" size="small" />
+            )}
+          </Box>
+        </CardContent>
+      </Card>
     ))
   ) : (
     <Typography color="text.secondary">No bids yet.</Typography>
   )}
 </Box>
+
 
 
 
@@ -5073,8 +5107,12 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
 {chatAuctionId && (
   <AuctionChatModal
     auctionId={chatAuctionId}
+    auction={chatAuctionData}
     open={Boolean(chatAuctionId)}
-    onClose={() => setChatAuctionId(null)}
+    onClose={() => {
+      setChatAuctionId(null);
+      setChatAuctionData(null);
+    }}
   />
 )}
 
