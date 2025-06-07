@@ -2,12 +2,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, Box, Snackbar, Alert, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
-  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton, Tabs, Tab, Chip
+  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton, Tabs, Tab, Chip, Accordion, AccordionDetails, AccordionSummary
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { auth, db } from './firebase';
-import { doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, getDocs, orderBy, limit } from 'firebase/firestore';
+import { runTransaction, doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, getDocs, orderBy, limit } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import TopNavbar from './TopNavbar';
 import logo from './assets/Screenshot 2025-05-07 113933-Photoroom.png';
@@ -17,6 +17,7 @@ import SwipeableViews from 'react-swipeable-views';
 import Lottie from 'lottie-react';
 import winnerAnim from './assets/winner-celebration.json';
 import AuctionChatModal from './AuctionChatModal';
+import winnerAnim2 from './assets/winner-celebration2.json';
 
 
 
@@ -107,16 +108,71 @@ const [selectedAuctionForDetails, setSelectedAuctionForDetails] = useState(null)
 
 
 useEffect(() => {
-  const q = query(collection(db, 'auctions'));
+  const userId = auth.currentUser?.uid;
+  if (!userId) return;
 
-  const unsub = onSnapshot(q, snapshot => {
-    const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const sorted = all.sort((a, b) => b.timestamp - a.timestamp); // Optional: sort newest first
+  const q = query(collection(db, 'auctions'), where('status', 'in', ['live', 'closed']));
+
+  const unsub = onSnapshot(q, async (snapshot) => {
+    const enriched = await Promise.all(snapshot.docs.map(async (docSnap) => {
+      const auction = { id: docSnap.id, ...docSnap.data() };
+
+      // 🔁 Get all bids in this auction (to track who outbid whom)
+      const allBidsSnap = await getDocs(
+        query(collection(db, 'auctions', auction.id, 'bids'), orderBy('bidTime', 'asc'))
+      );
+      const allBids = allBidsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // 🎯 Filter only your bids
+      const yourBids = allBids.filter(bid => bid.wholesalerId === userId);
+      const youParticipated = yourBids.length > 0;
+
+      // ❌ Skip closed auctions where wholesaler didn't participate
+      if (auction.status === 'closed' && !youParticipated) return null;
+
+      // 🧠 Enrich your bids with "wasHighest" and "surpassedBy"
+      let maxAmountSoFar = -Infinity;
+      const yourDetailedBids = yourBids.map((yourBid) => {
+        const bidPlacedTime = yourBid.bidTime;
+
+        const wasHighest = yourBid.amount > maxAmountSoFar;
+        if (yourBid.amount > maxAmountSoFar) {
+          maxAmountSoFar = yourBid.amount;
+        }
+
+        const surpassedBy = allBids.find(
+          (b) => b.bidTime > bidPlacedTime && b.amount > yourBid.amount
+        );
+
+        return {
+          ...yourBid,
+          wasHighest,
+          surpassedBy: surpassedBy
+            ? {
+                name: surpassedBy.wholesalerName || 'Unknown',
+                amount: surpassedBy.amount,
+                time: surpassedBy.bidTime
+              }
+            : null
+        };
+      });
+
+      return {
+        ...auction,
+        allBids,
+        yourBids: yourDetailedBids
+      };
+    }));
+
+    const sorted = enriched.filter(Boolean).sort((a, b) => b.timestamp - a.timestamp);
     setLiveAuctions(sorted);
   });
 
   return () => unsub();
 }, []);
+
+
+
 
 
 
@@ -189,7 +245,7 @@ const handlePlaceBid = async () => {
       const lastBid = recentBidSnap.docs[0].data();
       const timeSinceLast = Date.now() - lastBid.bidTime;
 
-      if (timeSinceLast < 10000) { // 10 seconds
+      if (timeSinceLast < 10000) {
         setSnack({
           open: true,
           message: `⏳ Please wait ${Math.ceil((10000 - timeSinceLast) / 1000)}s before bidding again.`,
@@ -202,43 +258,65 @@ const handlePlaceBid = async () => {
     console.error('Error checking previous bids:', err);
   }
 
-  // Minimum bid enforcement
+  // Warn if bid is unusually high
   const minBid = auction.highestBid?.amount
     ? auction.highestBid.amount + auction.minIncrement
     : auction.startingPricePerKg;
 
   if (bid < minBid) {
-    setSnack({ open: true, message: `❌ Your bid must be at least ₹${minBid.toFixed(2)}`, severity: 'warning' });
+    setSnack({
+      open: true,
+      message: `❌ Your bid must be at least ₹${minBid.toFixed(2)}`,
+      severity: 'warning'
+    });
     return;
   }
 
-  // Warn if bid is unusually high
   if (bid > minBid * 2) {
     const confirmHigh = window.confirm(`⚠️ Your bid of ₹${bid.toFixed(2)} is quite high. Do you still want to place it?`);
     if (!confirmHigh) return;
   }
 
+  // Use transaction to prevent race condition
   try {
-    const userSnap = await getDoc(doc(db, 'users', userId));
-    const wholesalerName = userSnap.exists() ? userSnap.data().name : 'Unknown';
-    const profilePicture = userSnap.exists() ? userSnap.data().profilePicture : null;
-    // Save the bid
-    const bidRef = doc(collection(db, 'auctions', auction.id, 'bids'));
-    await setDoc(bidRef, {
-      wholesalerId: userId,
-      wholesalerName,
-      profilePicture,
-      amount: bid,
-      bidTime: Date.now()
-    });
+    await runTransaction(db, async (transaction) => {
+      const auctionRef = doc(db, 'auctions', auction.id);
+      const auctionSnap = await transaction.get(auctionRef);
+      if (!auctionSnap.exists()) throw new Error("Auction not found");
 
-    // Update highest bid in auction doc
-    await updateDoc(doc(db, 'auctions', auction.id), {
-      highestBid: {
+      const auctionData = auctionSnap.data();
+      const currentHighest = auctionData.highestBid;
+      const calculatedMinBid = currentHighest?.amount
+        ? currentHighest.amount + auctionData.minIncrement
+        : auctionData.startingPricePerKg;
+
+      if (bid < calculatedMinBid) {
+        throw new Error(`❌ Bid must be at least ₹${calculatedMinBid.toFixed(2)}`);
+      }
+
+      const userSnap = await getDoc(doc(db, 'users', userId));
+      const wholesalerName = userSnap.exists() ? userSnap.data().name : 'Unknown';
+      const profilePicture = userSnap.exists() ? userSnap.data().profilePicture : null;
+
+      const bidRef = doc(collection(db, 'auctions', auction.id, 'bids'));
+
+      // Save the bid
+      transaction.set(bidRef, {
         wholesalerId: userId,
         wholesalerName,
-        amount: bid
-      }
+        profilePicture,
+        amount: bid,
+        bidTime: Date.now()
+      });
+
+      // Update auction highest bid
+      transaction.update(auctionRef, {
+        highestBid: {
+          wholesalerId: userId,
+          wholesalerName,
+          amount: bid
+        }
+      });
     });
 
     setSnack({ open: true, message: '✅ Bid placed successfully!', severity: 'success' });
@@ -247,11 +325,9 @@ const handlePlaceBid = async () => {
     setShowConfirmDialog(false);
   } catch (err) {
     console.error('❌ Bid error:', err);
-    setSnack({ open: true, message: 'Bid failed. Please try again.', severity: 'error' });
+    setSnack({ open: true, message: err.message || 'Bid failed. Please try again.', severity: 'error' });
   }
 };
-
-
 
 
 
@@ -306,6 +382,9 @@ const handlePlaceBid = async () => {
     }
   };
 
+
+  const pastAuctions = liveAuctions.filter(a => a.status === 'closed');
+
   return (
     <Container maxWidth="lg">
       <TopNavbar />
@@ -329,6 +408,7 @@ const handlePlaceBid = async () => {
       <Tabs value={tab} onChange={(e, newVal) => setTab(newVal)} sx={{ mt: 4 }}>
         <Tab label="Warehouse Info" />
         <Tab label="Live Auctions" /> 
+        <Tab label="Past Auctions" /> 
       </Tabs>
 
       {tab === 0 && (
@@ -483,6 +563,184 @@ const handlePlaceBid = async () => {
 </Typography>
 
 
+{auction.allBids && auction.allBids.length > 0 && (
+  <Box mt={2} p={1.5} sx={{ background: '#eef2ff', borderRadius: 2 }}>
+    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+      🏆 Auction Leaderboard
+    </Typography>
+
+    {Object.values(
+  auction.allBids.reduce((acc, bid) => {
+    const id = bid.wholesalerId;
+    if (!acc[id] || bid.amount > acc[id].amount) {
+      acc[id] = bid;
+    }
+    return acc;
+  }, {})
+)
+  .sort((a, b) => b.amount - a.amount)
+  .map((bid, i) => {
+    const isYou = bid.wholesalerId === uid;
+    const isTop = i === 0;
+
+    return (
+      <Box
+        key={i}
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={1}
+        p={1}
+        sx={{
+          borderRadius: 1,
+          backgroundColor: isTop ? '#f0fff4' : '#fff',
+          position: 'relative',
+          overflow: 'hidden',
+          boxShadow: isTop ? 2 : 0
+        }}
+      >
+        {/* 🎉 Background Lottie animation behind text for top bidder */}
+        {isTop && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              height: '100%',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              zIndex: 0,
+              opacity: 0.25,
+              pointerEvents: 'none'
+            }}
+          >
+            <Box sx={{ flex: 1 }}>
+              <Lottie
+                animationData={winnerAnim2}
+                loop
+                autoplay
+                style={{ height: '100%', width: '100%' }}
+              />
+            </Box>
+          </Box>
+        )}
+
+        {/* Main content above the animation */}
+        <Box display="flex" alignItems="center" gap={1} sx={{ zIndex: 1 }}>
+          <Chip
+            label={`#${i + 1}`}
+            color={isTop ? 'success' : 'default'}
+            size="small"
+          />
+
+          {bid.profilePicture ? (
+            <img
+              src={bid.profilePicture}
+              alt="avatar"
+              style={{ width: 32, height: 32, borderRadius: '50%' }}
+            />
+          ) : (
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                backgroundColor: '#ccc',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 14,
+                color: '#fff'
+              }}
+            >
+              {bid.wholesalerName?.charAt(0) || 'W'}
+            </Box>
+          )}
+
+          <Typography fontWeight={500}>
+            {bid.wholesalerName || 'Anonymous'}
+            {isYou && (
+              <Typography
+                component="span"
+                variant="caption"
+                sx={{ color: 'primary.main', fontWeight: 600, ml: 0.5 }}
+              >
+                (you)
+              </Typography>
+            )}
+          </Typography>
+        </Box>
+
+        <Box textAlign="right" sx={{ zIndex: 1 }}>
+          <Typography fontWeight={600}>
+            ₹{bid.amount.toFixed(2)} / Kg
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {new Date(bid.bidTime).toLocaleString()}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  })}
+
+
+  </Box>
+)}
+
+
+{auction.yourBids && auction.yourBids.length > 0 && (
+  <Box mt={2} p={1.5} sx={{ background: '#f9fafb', borderRadius: 2 }}>
+    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+      🧾 Your Bids:
+    </Typography>
+
+    {[...auction.yourBids].reverse().map((bid, i) => (
+      <Box
+        key={i}
+        mb={1.5}
+        p={1}
+        sx={{
+          borderRadius: 1,
+          backgroundColor: bid.wasHighest
+            ? bid.surpassedBy
+              ? '#fff8f0' // yellow tint if outbid
+              : '#e6ffed' // green tint if still highest
+            : '#f3f4f6'
+        }}
+      >
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="body2">
+            ₹{bid.amount.toFixed(2)} / Kg
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {new Date(bid.bidTime).toLocaleString()}
+          </Typography>
+        </Box>
+
+        {bid.wasHighest ? (
+          bid.surpassedBy ? (
+            <Typography variant="caption" color="error.main">
+              ⛔ Outbid by <strong>{bid.surpassedBy.name}</strong> for ₹{bid.surpassedBy.amount.toFixed(2)} at {new Date(bid.surpassedBy.time).toLocaleString()}
+            </Typography>
+          ) : (
+            <Typography variant="caption" color="success.main">
+              ✅ Still the highest bid
+            </Typography>
+          )
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            📉 This bid was not the highest
+          </Typography>
+        )}
+      </Box>
+    ))}
+  </Box>
+)}
+
+
+
+
 {auction.status === 'closed' ? (
   auction.highestBid?.wholesalerId === uid ? (
     <>
@@ -547,6 +805,96 @@ const handlePlaceBid = async () => {
     )}
   </Box>
 )}
+
+
+
+
+
+
+
+
+{tab === 2 && (
+  <Box mt={4}>
+    <Typography variant="h6" gutterBottom>Past Auctions You've Participated In</Typography>
+
+    {pastAuctions.length === 0 ? (
+      <Typography>No past auctions found.</Typography>
+    ) : (
+      pastAuctions.map((auction) => {
+        const winningBid = auction.highestBid;
+        const yourTopBid = auction.yourBids?.sort((a, b) => b.amount - a.amount)[0];
+
+        return (
+          <Accordion key={auction.id} sx={{ mb: 2 }}>
+            <AccordionSummary expandIcon={<i className="fas fa-chevron-down" />}>
+              <Box display="flex" flexDirection="column">
+                <Typography fontWeight={600}>{auction.riceType} — {auction.quantity} Kg</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Ended Auction • {new Date(auction.actualEndTime || auction.endTime).toLocaleString()}
+                </Typography>
+              </Box>
+            </AccordionSummary>
+
+            <AccordionDetails>
+              <Typography><strong>Description:</strong> {auction.description || 'No description'}</Typography>
+              <Typography><strong>Starting Price:</strong> ₹{auction.startingPricePerKg} / Kg</Typography>
+              <Typography><strong>Minimum Increment:</strong> ₹{auction.minIncrement}</Typography>
+              <Typography><strong>Total Quantity:</strong> {auction.quantity} Kg</Typography>
+
+              <Box mt={2}>
+                <Typography fontWeight={600}>🏆 Winning Bid</Typography>
+                <Typography>Wholesaler: {winningBid?.wholesalerName || 'N/A'}</Typography>
+                <Typography>Amount: ₹{winningBid?.amount || 'N/A'} / Kg</Typography>
+              </Box>
+
+              <Box mt={2}>
+                <Typography fontWeight={600}>📌 Your Top Bid</Typography>
+                {yourTopBid ? (
+                  <Typography>₹{yourTopBid.amount} / Kg at {new Date(yourTopBid.bidTime).toLocaleString()}</Typography>
+                ) : (
+                  <Typography>You did not place a bid.</Typography>
+                )}
+              </Box>
+
+              <Box mt={2}>
+                <Typography fontWeight={600}>📋 Leaderboard</Typography>
+                {Object.values(
+                  auction.allBids.reduce((acc, bid) => {
+                    const id = bid.wholesalerId;
+                    if (!acc[id] || bid.amount > acc[id].amount) {
+                      acc[id] = bid;
+                    }
+                    return acc;
+                  }, {})
+                )
+                  .sort((a, b) => b.amount - a.amount)
+                  .map((bid, i) => (
+                    <Box
+                      key={i}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      mt={1}
+                      p={1}
+                      sx={{
+                        borderRadius: 1,
+                        backgroundColor: bid.wholesalerId === winningBid?.wholesalerId ? '#e6ffed' : '#fff',
+                        boxShadow: 1
+                      }}
+                    >
+                      <Typography>#{i + 1} {bid.wholesalerName || 'Anonymous'}</Typography>
+                      <Typography>₹{bid.amount} / Kg</Typography>
+                    </Box>
+                  ))}
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        );
+      })
+    )}
+  </Box>
+) }
+
 
 
 

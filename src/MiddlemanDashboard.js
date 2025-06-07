@@ -271,24 +271,33 @@ useEffect(() => {
 
   const q = query(collection(db, 'auctions'), where('middlemanId', '==', uid));
 
-  const unsub = onSnapshot(q, async (snap) => {
-    const bidsMap = {};
+  const unsub = onSnapshot(q, (snap) => {
+    const newBidsMap = {};
+    const unsubBidsListeners = [];
 
-    for (const docSnap of snap.docs) {
-      const auctionId = docSnap.id;
-      const bidsSnap = await getDocs(collection(db, 'auctions', auctionId, 'bids'));
-     bidsMap[auctionId] = bidsSnap.docs
-  .map(bid => bid.data())
-  .sort((a, b) => b.amount - a.amount)
-  .map((bid, i) => ({ ...bid, isHighest: i === 0 }));
+    snap.docs.forEach((auctionDoc) => {
+      const auctionId = auctionDoc.id;
+      const bidsRef = collection(db, 'auctions', auctionId, 'bids');
 
-    }
+      const unsubBids = onSnapshot(bidsRef, (bidsSnap) => {
+        const bids = bidsSnap.docs.map(doc => doc.data())
+          .sort((a, b) => b.amount - a.amount)
+          .map((bid, i) => ({ ...bid, isHighest: i === 0 }));
 
-    setBidsByAuction(bidsMap);
+        setBidsByAuction(prev => ({ ...prev, [auctionId]: bids }));
+      });
+
+      unsubBidsListeners.push(unsubBids);
+    });
+
+    return () => {
+      unsubBidsListeners.forEach(unsub => unsub());
+    };
   });
 
   return () => unsub();
 }, []);
+
 
 
 useEffect(() => {
@@ -4282,7 +4291,23 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
       <Grid container spacing={2}>
         {liveAuctions.map(auction => (
           <Grid item xs={12} md={6} key={auction.id}>
-            <Card sx={{ p: 2, borderRadius: 3, boxShadow: 3 }}>
+            <Card sx={{ p: 2, borderRadius: 3, boxShadow: 3, position: 'relative' }}>
+
+               <Chip
+      label={auction.status === 'live' ? 'Live' : 'Closed'}
+      color={auction.status === 'live' ? 'success' : 'default'}
+      sx={{
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        borderRadius: 1,
+        zIndex: 1
+      }}
+    />
+
+
   {auction.images && auction.images.length > 0 && (
     <Box mb={1} display="flex" gap={1} overflow="auto">
       {auction.images.map((img, idx) => (
