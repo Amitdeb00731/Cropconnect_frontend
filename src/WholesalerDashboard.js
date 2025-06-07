@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, Box, Snackbar, Alert,
-  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton
+  CircularProgress, TextField, Button, Paper, InputAdornment, IconButton, Tabs, Tab
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
@@ -29,6 +29,7 @@ export default function WholesalerDashboard() {
   const [locationOptions, setLocationOptions] = useState([]);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -141,104 +142,110 @@ export default function WholesalerDashboard() {
         )}
       </Box>
 
-      <Box mt={5}>
-        <Typography variant="h6" gutterBottom>
-          Warehouse Details
-        </Typography>
-        <Paper sx={{ p: 3, borderRadius: 2 }}>
-          <Autocomplete
-            fullWidth
-            freeSolo
-            options={locationOptions}
-            value={{ label: warehouse.location }}
-            getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
-            onInputChange={(e, value) => {
-              setWarehouse(prev => ({ ...prev, location: value }));
-              handleSearchLocation(value);
-            }}
-            onChange={(e, value) => {
-              if (value) {
-                setWarehouse(prev => ({
-                  ...prev,
-                  location: value.label || value,
-                  latitude: value.latitude || null,
-                  longitude: value.longitude || null
-                }));
-              }
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Warehouse Location"
-                margin="normal"
-                disabled={!editMode}
-                InputProps={{
-                  ...params.InputProps,
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={handleGeolocate} edge="end" disabled={!editMode}>
-                        <MyLocationIcon />
-                      </IconButton>
-                    </InputAdornment>
-                  )
+      <Tabs value={tab} onChange={(e, newVal) => setTab(newVal)} sx={{ mt: 4 }}>
+        <Tab label="Warehouse Info" />
+      </Tabs>
+
+      {tab === 0 && (
+        <Box mt={4}>
+          <Typography variant="h6" gutterBottom>
+            Warehouse Details
+          </Typography>
+          <Paper sx={{ p: 3, borderRadius: 2 }}>
+            <Autocomplete
+              fullWidth
+              freeSolo
+              options={locationOptions}
+              value={{ label: warehouse.location }}
+              getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+              onInputChange={(e, value) => {
+                setWarehouse(prev => ({ ...prev, location: value }));
+                handleSearchLocation(value);
+              }}
+              onChange={(e, value) => {
+                if (value) {
+                  setWarehouse(prev => ({
+                    ...prev,
+                    location: value.label || value,
+                    latitude: value.latitude || null,
+                    longitude: value.longitude || null
+                  }));
+                }
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Warehouse Location"
+                  margin="normal"
+                  disabled={!editMode}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={handleGeolocate} edge="end" disabled={!editMode}>
+                          <MyLocationIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
+                />
+              )}
+            />
+
+            <TextField
+              label="Nearby Landmark"
+              fullWidth
+              margin="normal"
+              value={warehouse.landmark}
+              onChange={(e) => setWarehouse({ ...warehouse, landmark: e.target.value })}
+              disabled={!editMode}
+            />
+            <TextField
+              label="Storage Capacity (tons)"
+              fullWidth
+              margin="normal"
+              value={warehouse.capacity}
+              onChange={(e) => setWarehouse({ ...warehouse, capacity: e.target.value })}
+              disabled={!editMode}
+            />
+            <TextField
+              label="Contact Info"
+              fullWidth
+              margin="normal"
+              value={warehouse.contact}
+              onChange={(e) => setWarehouse({ ...warehouse, contact: e.target.value })}
+              disabled={!editMode}
+            />
+
+            <Box mt={3}>
+              <Typography variant="subtitle2" mb={1}>Warehouse Location on Map</Typography>
+              <WarehouseMapPicker
+                lat={warehouse.latitude}
+                lon={warehouse.longitude}
+                readOnly={!editMode}
+                onChange={(lat, lon) => {
+                  setWarehouse(prev => ({
+                    ...prev,
+                    latitude: lat,
+                    longitude: lon
+                  }));
                 }}
               />
-            )}
-          />
+            </Box>
 
-          <TextField
-            label="Nearby Landmark"
-            fullWidth
-            margin="normal"
-            value={warehouse.landmark}
-            onChange={(e) => setWarehouse({ ...warehouse, landmark: e.target.value })}
-            disabled={!editMode}
-          />
-          <TextField
-            label="Storage Capacity (tons)"
-            fullWidth
-            margin="normal"
-            value={warehouse.capacity}
-            onChange={(e) => setWarehouse({ ...warehouse, capacity: e.target.value })}
-            disabled={!editMode}
-          />
-          <TextField
-            label="Contact Info"
-            fullWidth
-            margin="normal"
-            value={warehouse.contact}
-            onChange={(e) => setWarehouse({ ...warehouse, contact: e.target.value })}
-            disabled={!editMode}
-          />
-
-          <Box mt={3}>
-            <Typography variant="subtitle2" mb={1}>Warehouse Location on Map</Typography>
-            <WarehouseMapPicker
-              lat={warehouse.latitude}
-              lon={warehouse.longitude}
-              readOnly={!editMode}
-              onChange={(lat, lon) => {
-                setWarehouse(prev => ({
-                  ...prev,
-                  latitude: lat,
-                  longitude: lon
-                }));
-              }}
-            />
-          </Box>
-
-          <Box mt={3} display="flex" gap={2}>
-            {!editMode ? (
-              <Button variant="contained" onClick={() => setEditMode(true)}>Edit</Button>
-            ) : (
-              <Button variant="contained" onClick={handleSaveWarehouse}>Save</Button>
-            )}
-            {editMode && (
-              <Button variant="outlined" onClick={() => setEditMode(false)}>Cancel</Button>
-            )}
-          </Box>
-        </Paper>
-      </Box>
+            <Box mt={3} display="flex" gap={2}>
+              {!editMode ? (
+                <Button variant="contained" onClick={() => setEditMode(true)}>Edit</Button>
+              ) : (
+                <Button variant="contained" onClick={handleSaveWarehouse}>Save</Button>
+              )}
+              {editMode && (
+                <Button variant="outlined" onClick={() => setEditMode(false)}>Cancel</Button>
+              )}
+            </Box>
+          </Paper>
+        </Box>
+      )}
 
       <TawkMessenger />
 
