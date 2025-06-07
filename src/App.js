@@ -18,6 +18,8 @@ import LogisticsDashboard from './LogisticsDashboard';
 import FaceEnroll from './FaceEnroll';
 import FaceVerify from './FaceVerify';
 import AdminDashboard from './AdminDashboard';
+import WholesalerDashboard from './WholesalerDashboard';
+import WarehouseSetup from './WarehouseSetup';
 
 
 // 👇 CallState-aware app content (must be inside provider)
@@ -40,6 +42,21 @@ function AppContent() {
     </ProtectedRoute>
   }
 />
+
+<Route
+  path="/wholesaler-dashboard"
+  element={
+    <ProtectedRoute allowedAccountType="wholesaler">
+      <WholesalerDashboard />
+    </ProtectedRoute>
+  }
+/>
+
+<Route path="/warehouse-setup" element={
+  <ProtectedRoute allowedAccountType="wholesaler">
+    <WarehouseSetup />
+  </ProtectedRoute>
+} />
 
 
           <Route

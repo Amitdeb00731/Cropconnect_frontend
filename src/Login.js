@@ -69,7 +69,14 @@ export default function Login() {
  break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
-        case 'wholesaler': navigate('/wholesaler-dashboard'); break;
+        case 'wholesaler':
+  if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+  break;
+
         case 'customer': navigate('/customer-dashboard'); break;
         default: alert("Unknown account type.");
       }
@@ -135,7 +142,13 @@ const handleFacebookLogin = async () => {
  break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
-        case 'wholesaler': navigate('/wholesaler-dashboard'); break;
+        case 'wholesaler':
+  if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid: user.uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid: user.uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+  break;
         case 'customer': navigate('/customer-dashboard'); break;
         default: alert("Unknown account type.");
       }
@@ -202,7 +215,14 @@ break;
  break;
         case 'distributor': navigate('/distributor-dashboard'); break;
         case 'retailer': navigate('/retailer-dashboard'); break;
-        case 'wholesaler': navigate('/wholesaler-dashboard'); break;
+        case 'wholesaler':
+  if (!userData?.faceEnrolled) {
+    navigate("/face-enroll", { state: { uid, accountType } });
+  } else {
+    navigate("/face-verify", { state: { uid, nextRoute: `/${accountType}-dashboard` } });
+  }
+  break;
+
         case 'customer': navigate('/customer-dashboard'); break;
         case 'logistics': navigate('/logistics-dashboard'); break;
         case 'admin':
