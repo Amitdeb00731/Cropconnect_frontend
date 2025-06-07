@@ -67,7 +67,7 @@ import { Player } from '@lottiefiles/react-lottie-player';
 import razorpayLoadingAnim from './assets/razorpay-loading.json'; // ✅ Make sure this file exists
 import SwipeableViews from 'react-swipeable-views';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
-
+import AuctionChatModal from './AuctionChatModal';
 
 
 
@@ -147,6 +147,7 @@ const [proposals, setProposals] = useState([]);
 const [isRazorpayLoading, setIsRazorpayLoading] = useState(false);
 
 
+const [chatAuctionId, setChatAuctionId] = useState(null);
 
 
 const [auctionDialogOpen, setAuctionDialogOpen] = useState(false);
@@ -4319,6 +4320,14 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
     </Button>
   </Box>
 
+  <Button
+  variant="outlined"
+  onClick={() => setChatAuctionId(auction.id)}
+>
+  Open Chat
+</Button>
+
+
  <Box
     sx={{
       background: '#e3f2fd',
@@ -5055,6 +5064,19 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
     <Button onClick={() => setSummaryAuction(null)} variant="contained">Close</Button>
   </DialogActions>
 </Dialog>
+
+
+
+
+
+
+{chatAuctionId && (
+  <AuctionChatModal
+    auctionId={chatAuctionId}
+    open={Boolean(chatAuctionId)}
+    onClose={() => setChatAuctionId(null)}
+  />
+)}
 
 
 

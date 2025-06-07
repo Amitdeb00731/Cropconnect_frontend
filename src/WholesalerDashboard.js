@@ -16,6 +16,7 @@ import WarehouseMapPicker from './WarehouseMapPicker';
 import SwipeableViews from 'react-swipeable-views';
 import Lottie from 'lottie-react';
 import winnerAnim from './assets/winner-celebration.json';
+import AuctionChatModal from './AuctionChatModal';
 
 
 
@@ -33,6 +34,8 @@ export default function WholesalerDashboard() {
   });
 
 
+
+  const [chatAuctionId, setChatAuctionId] = useState(null);
 
 
 
@@ -501,6 +504,14 @@ const handlePlaceBid = async () => {
   See Full Details
 </Button>
 
+<Button
+  variant="outlined"
+  onClick={() => setChatAuctionId(auction.id)}
+>
+  Open Chat
+</Button>
+
+
 </Paper>
 
           </Grid>
@@ -695,6 +706,15 @@ const handlePlaceBid = async () => {
 
 
 
+
+
+{chatAuctionId && (
+  <AuctionChatModal
+    auctionId={chatAuctionId}
+    open={Boolean(chatAuctionId)}
+    onClose={() => setChatAuctionId(null)}
+  />
+)}
 
 
 
