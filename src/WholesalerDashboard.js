@@ -405,7 +405,10 @@ const handlePlaceBid = async () => {
         )}
       </Box>
 
-      <Tabs value={tab} onChange={(e, newVal) => setTab(newVal)} sx={{ mt: 4 }}>
+      <Tabs value={tab} onChange={(e, newVal) => setTab(newVal)} centered
+  variant="scrollable"
+  scrollButtons="auto"
+  sx={{ flexGrow: 1 }}>
         <Tab label="Warehouse Info" />
         <Tab label="Live Auctions" /> 
         <Tab label="Past Auctions" /> 
