@@ -65,6 +65,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Lottie from 'lottie-react';
 import { Player } from '@lottiefiles/react-lottie-player';
 import razorpayLoadingAnim from './assets/razorpay-loading.json'; // ✅ Make sure this file exists
+import SwipeableViews from 'react-swipeable-views';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 
 
 
@@ -137,17 +139,49 @@ const tabLabels = [
   "Find Mills",
   "Track Processing",
   "Invoices",
-  "Messages"
+  "Messages",
+  "Live Auctions"
 ];
 const [proposals, setProposals] = useState([]);
 
 const [isRazorpayLoading, setIsRazorpayLoading] = useState(false);
 
 
+
+
+const [auctionDialogOpen, setAuctionDialogOpen] = useState(false);
+const [selectedAuctionItem, setSelectedAuctionItem] = useState(null);
+const [auctionQuantity, setAuctionQuantity] = useState('');
+const [startingBid, setStartingBid] = useState('');
+const [bidIncrement, setBidIncrement] = useState('');
+const [auctionDuration, setAuctionDuration] = useState('');
+const [auctionImages, setAuctionImages] = useState([]);
+const [auctionDescription, setAuctionDescription] = useState('');
+const [uploadingImage, setUploadingImage] = useState(false);
+
+
+const [selectedAuctionForDetails, setSelectedAuctionForDetails] = useState(null);
+
+
+
+const [bidsByAuction, setBidsByAuction] = useState({});
+
+const [summaryAuction, setSummaryAuction] = useState(null);
+
+
+const openAuctionDialog = (item) => {
+  setSelectedAuctionItem(item);
+  setAuctionDialogOpen(true);
+};
+
+
 const [pickupLocation, setPickupLocation] = useState('');
 const [pickupDate, setPickupDate] = useState(null);
 const [pickupTime, setPickupTime] = useState('');
 const [locationSuggestions, setLocationSuggestions] = useState([]);
+
+const [liveAuctions, setLiveAuctions] = useState([]);
+const [endedAuctions, setEndedAuctions] = useState([]);
 
 
 
@@ -224,6 +258,130 @@ const markNotificationAsSeen = async (id, type) => {
     console.error("❌ Failed to mark seen:", err.message);
   }
 };
+
+
+
+
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const q = query(collection(db, 'auctions'), where('middlemanId', '==', uid));
+
+  const unsub = onSnapshot(q, async (snap) => {
+    const bidsMap = {};
+
+    for (const docSnap of snap.docs) {
+      const auctionId = docSnap.id;
+      const bidsSnap = await getDocs(collection(db, 'auctions', auctionId, 'bids'));
+      bidsMap[auctionId] = bidsSnap.docs.map(bid => bid.data());
+    }
+
+    setBidsByAuction(bidsMap);
+  });
+
+  return () => unsub();
+}, []);
+
+
+useEffect(() => {
+  const middlemanId = auth.currentUser?.uid;
+  if (!middlemanId) return;
+
+  const q = query(collection(db, 'auctions'), where('middlemanId', '==', middlemanId));
+
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const live = list.filter(a => a.status === 'live');
+    const ended = list.filter(a => a.status === 'closed');
+    setLiveAuctions(live);
+    setEndedAuctions(ended);
+  });
+
+  return () => unsub();
+}, []);
+
+
+
+useEffect(() => {
+  const middlemanId = auth.currentUser?.uid;
+  if (!middlemanId) return;
+
+  const q = query(
+    collection(db, 'auctions'),
+    where('middlemanId', '==', middlemanId),
+    where('status', '==', 'live')
+  );
+
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setLiveAuctions(list);
+  });
+
+  return () => unsub();
+}, []);
+
+
+
+const getRemainingTime = (endTime) => {
+  const diff = endTime - Date.now();
+  if (diff <= 0) return '00:00:00';
+
+  const hours = Math.floor(diff / 3600000);
+  const minutes = Math.floor((diff % 3600000) / 60000);
+  const seconds = Math.floor((diff % 60000) / 1000);
+
+  return `${hours.toString().padStart(2, '0')}:${minutes
+    .toString()
+    .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+
+
+
+const [timerKey, setTimerKey] = useState(Date.now());
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    setTimerKey(Date.now()); // force re-render
+  }, 1000);
+  return () => clearInterval(interval);
+}, []);
+
+
+
+
+const handleEndAuction = async (auctionId) => {
+  try {
+    const auctionDocRef = doc(db, 'auctions', auctionId);
+    const auctionSnap = await getDoc(auctionDocRef);
+    const auction = auctionSnap.data();
+
+    const winnerId = auction?.highestBid?.wholesalerId || null;
+
+    await updateDoc(auctionDocRef, {
+      status: 'closed',
+      endedEarly: true,
+      actualEndTime: Date.now(),
+      winnerId
+    });
+
+      setTimeout(async () => {
+      const updatedSnap = await getDoc(auctionDocRef);
+      const updatedAuction = updatedSnap.data();
+      setSummaryAuction({ id: auctionId, ...updatedAuction }); // ✅ now includes actualEndTime
+    }, 300);
+    setSnack({ open: true, message: 'Auction ended. Summary shown.', severity: 'info' });
+  } catch (err) {
+    console.error('Failed to end auction:', err);
+    setSnack({ open: true, message: 'Could not end auction.', severity: 'error' });
+  }
+};
+
+
+
+
+
 
 
 const [invoices, setInvoices] = useState([]);
@@ -1992,6 +2150,124 @@ useEffect(() => {
 }, []);
 
 
+
+
+const handleCreateAuction = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    setSnack({ open: true, message: 'User not authenticated.', severity: 'error' });
+    return;
+  }
+
+  const middlemanSnap = await getDoc(doc(db, 'users', user.uid));
+  const middlemanName = middlemanSnap.exists() ? middlemanSnap.data().name : 'Unknown';
+
+  const qty = parseFloat(auctionQuantity);
+  const startPrice = parseFloat(startingBid);
+  const increment = parseFloat(bidIncrement);
+  const duration = parseFloat(auctionDuration); // in hours
+  const riceType = selectedAuctionItem?.riceType;
+
+  if (!riceType || !qty || !startPrice || !increment || !duration) {
+    setSnack({ open: true, message: '❌ Please fill all fields correctly.', severity: 'warning' });
+    return;
+  }
+
+  // ✅ Check inventory quantity from processedInventory
+  const matchedInventory = processedInventory.find(
+    i => i.riceType === riceType && i.id === selectedAuctionItem.id
+  );
+  const availableQty = matchedInventory ? parseFloat(matchedInventory.quantity) : 0;
+
+  if (qty > availableQty) {
+    setSnack({ open: true, message: `❌ You only have ${availableQty} Kg available for ${riceType}.`, severity: 'error' });
+    return;
+  }
+
+  if (startPrice <= 0 || increment <= 0 || duration <= 0) {
+    setSnack({ open: true, message: '❌ Price, increment and duration must be positive values.', severity: 'error' });
+    return;
+  }
+
+  if (increment > 50) {
+    setSnack({ open: true, message: '❌ Minimum bid increment should not exceed ₹50.', severity: 'error' });
+    return;
+  }
+
+  try {
+    const endTime = Date.now() + duration * 3600 * 1000;
+
+    await addDoc(collection(db, 'auctions'), {
+      middlemanId: user.uid,
+      middlemanName,
+      riceType,
+      quantity: qty,
+      startingPricePerKg: startPrice,
+      minIncrement: increment,
+      startTime: Date.now(),
+      endTime,
+      status: 'live',
+      highestBid: null,
+      winnerId: null,
+      inventoryId: selectedAuctionItem.id,
+      description: auctionDescription?.trim() || '',
+      images: auctionImages || [],
+      timestamp: Date.now()
+    });
+
+    setSnack({ open: true, message: '✅ Auction created successfully!', severity: 'success' });
+
+    // Reset form
+    setAuctionDialogOpen(false);
+    setAuctionQuantity('');
+    setAuctionDescription('');
+    setAuctionImages([]);
+    setStartingBid('');
+    setBidIncrement('');
+    setAuctionDuration('');
+    setSelectedAuctionItem(null);
+  } catch (err) {
+    console.error('❌ Auction creation failed:', err);
+    setSnack({ open: true, message: 'Failed to create auction. Please try again.', severity: 'error' });
+  }
+};
+
+
+
+
+const handleImageUpload = async (file) => {
+  if (!file) return;
+  setUploadingImage(true);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'ml_default');
+
+  try {
+    const res = await fetch('https://api.cloudinary.com/v1_1/dfdot1hfz/image/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    if (data.secure_url) {
+      setAuctionImages(prev => [...prev, data.secure_url]);
+    }
+  } catch (err) {
+    console.error("Image upload error:", err);
+    setSnack({ open: true, message: 'Image upload failed', severity: 'error' });
+  } finally {
+    setUploadingImage(false);
+  }
+};
+
+const removeAuctionImage = (index) => {
+  setAuctionImages(prev => prev.filter((_, i) => i !== index));
+};
+
+
+
+
+
+
 const handleRazorpayPayment = async () => {
   const inspection = selectedPaymentInspection;
   const scriptLoaded = await loadRazorpayScript();
@@ -2381,7 +2657,7 @@ const getActiveStep = (req, logisticsReq = {}) => {
 
 
 
-
+const processedRiceTypes = processedInventory.map(i => i.riceType);
 
 
 
@@ -2481,6 +2757,8 @@ const getActiveStep = (req, logisticsReq = {}) => {
     Messages
   </Badge>
 } />
+
+<Tab label="Live Auctions" />
 
 </Tabs>
  <IconButton onClick={() => setOptionDrawerOpen(true)}>
@@ -3135,6 +3413,9 @@ const getActiveStep = (req, logisticsReq = {}) => {
                     <strong>Processed On:</strong>{' '}
                     {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}
                   </Typography>
+                   <Button variant="contained" onClick={() => openAuctionDialog(item)}>
+        Create Auction
+      </Button>
                 </CardContent>
               </Card>
             </Grid>
@@ -3985,6 +4266,150 @@ const getActiveStep = (req, logisticsReq = {}) => {
 
 
 
+{tab === 9 && (
+  <Box mt={2}>
+    <Typography variant="h6" gutterBottom>Live Auctions</Typography>
+    {liveAuctions.length === 0 ? (
+      <Typography>No live auctions currently.</Typography>
+    ) : (
+      <Grid container spacing={2}>
+        {liveAuctions.map(auction => (
+          <Grid item xs={12} md={6} key={auction.id}>
+            <Card sx={{ p: 2, borderRadius: 3, boxShadow: 3 }}>
+  {auction.images && auction.images.length > 0 && (
+    <Box mb={1} display="flex" gap={1} overflow="auto">
+      {auction.images.map((img, idx) => (
+        <img key={idx} src={img} alt="Auction" width={80} height={80} style={{ borderRadius: 8 }} />
+      ))}
+    </Box>
+  )}
+
+  <Typography variant="subtitle1" fontWeight={600}>
+    {auction.riceType} — {auction.quantity} Kg
+  </Typography>
+
+  <Typography fontStyle="italic" color="text.secondary" sx={{ mb: 1 }}>
+    {auction.description || 'No description provided.'}
+  </Typography>
+
+  <Typography variant="body2" color="text.secondary">
+    Starting Price: ₹{auction.startingPricePerKg} / Kg
+  </Typography>
+  <Typography variant="body2" color="text.secondary">
+    Min Increment: ₹{auction.minIncrement}
+  </Typography>
+  <Typography variant="body2" color="primary" fontWeight="bold">
+    Time Remaining: {getRemainingTime(auction.endTime)}
+  </Typography>
+  <Button
+  variant="outlined"
+  onClick={() => setSelectedAuctionForDetails(auction)}
+>
+  See Full Details
+</Button>
+
+
+  <Box mt={2}>
+    <Button
+      variant="outlined"
+      color="error"
+      onClick={() => handleEndAuction(auction.id)}
+    >
+      End Auction Now
+    </Button>
+  </Box>
+
+ <Box
+    sx={{
+      background: '#e3f2fd',
+      borderRadius: 2,
+      p: 2,
+      mb: 2,
+      borderLeft: '6px solid #2196f3'
+    }}
+  >
+    <Typography variant="subtitle1" fontWeight="bold" color="primary">
+      🥇 Highest Bid:
+      {auction.highestBid?.amount
+        ? ` ₹${auction.highestBid.amount.toFixed(2)} / Kg`
+        : ' No bids yet'}
+    </Typography>
+
+    {auction.highestBid?.amount && (
+      <>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          🧑‍💼 Bidder: <strong>{auction.highestBid.wholesalerName || 'Unknown Bidder'}</strong>
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 0.5 }}>
+          💰 Total Value: ₹
+          <strong>
+            {(auction.highestBid.amount * parseFloat(auction.quantity || 0)).toFixed(2)}
+          </strong>
+        </Typography>
+      </>
+    )}
+  </Box>
+
+
+  <Box mt={2}>
+  <Typography variant="subtitle2">Bids Received:</Typography>
+  {bidsByAuction[auction.id]?.length > 0 ? (
+    bidsByAuction[auction.id].map((bid, index) => (
+      <Box key={index} display="flex" justifyContent="space-between">
+        <Typography>{bid.wholesalerName}</Typography>
+        <Typography>₹{bid.amount}</Typography>
+      </Box>
+    ))
+  ) : (
+    <Typography color="text.secondary">No bids yet.</Typography>
+  )}
+</Box>
+
+
+
+
+</Card>
+          </Grid>
+        ))}
+      </Grid>
+    )}
+     {endedAuctions.length > 0 && (
+      <>
+        <Typography variant="h6" color="error" mt={4}>
+          Ended Auctions
+        </Typography>
+        <Grid container spacing={2}>
+          {endedAuctions.map((auction) => (
+            <Grid item xs={12} md={6} key={auction.id}>
+              <Card sx={{ p: 2, border: '1px solid red', borderRadius: 2 }}>
+                <Typography variant="h6" color="error">
+                  {auction.riceType} — {auction.quantity} Kg (Ended)
+                </Typography>
+                <Typography variant="body2">{auction.description}</Typography>
+
+                <Button
+                  variant="outlined"
+                  sx={{ mt: 2 }}
+                  onClick={() => setSelectedAuctionForDetails(auction)}
+                >
+                  View Summary
+                </Button>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </>
+    )}
+  </Box>
+)}
+
+
+
+
+
+
+
+
 
 
       {/* Cart Drawer */}
@@ -4387,6 +4812,250 @@ const getActiveStep = (req, logisticsReq = {}) => {
     </Typography>
   </Box>
 )}
+
+
+
+<Dialog open={auctionDialogOpen} onClose={() => setAuctionDialogOpen(false)} fullWidth maxWidth="sm">
+  <DialogTitle>Host Auction for {selectedAuctionItem?.riceType}</DialogTitle>
+  <DialogContent dividers>
+    <Box mt={2}>
+      <Typography variant="subtitle2" gutterBottom>
+        Upload up to 5 images
+      </Typography>
+
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          border: '2px dashed #ccc',
+          borderRadius: 2,
+          p: 2,
+          position: 'relative',
+          cursor: auctionImages.length < 5 ? 'pointer' : 'not-allowed',
+          backgroundColor: '#fafafa',
+          '&:hover': { backgroundColor: '#f0f0f0' }
+        }}
+        onClick={() => document.getElementById('hidden-file-input')?.click()}
+      >
+        {auctionImages.map((url, i) => (
+          <Box key={i} sx={{ position: 'relative', width: 80, height: 80 }}>
+            <img
+              src={url}
+              alt="Auction"
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: 8,
+                objectFit: 'cover'
+              }}
+            />
+            <IconButton
+              size="small"
+              sx={{
+                position: 'absolute',
+                top: -10,
+                right: -10,
+                background: '#fff',
+                border: '1px solid #ccc'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeAuctionImage(i);
+              }}
+            >
+              ❌
+            </IconButton>
+          </Box>
+        ))}
+
+        {auctionImages.length < 5 && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 80,
+              height: 80,
+              backgroundColor: '#e0e0e0',
+              borderRadius: 2,
+              flexShrink: 0
+            }}
+          >
+            <Tooltip title="Upload Image">
+              <AddPhotoAlternateIcon fontSize="medium" />
+            </Tooltip>
+          </Box>
+        )}
+      </Box>
+
+      <input
+        id="hidden-file-input"
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files[0];
+          if (file && auctionImages.length < 5) {
+            handleImageUpload(file);
+          }
+        }}
+        disabled={auctionImages.length >= 5}
+      />
+    </Box>
+
+    <TextField
+      label="Auction Description"
+      multiline
+      rows={3}
+      fullWidth
+      margin="normal"
+      value={auctionDescription}
+      onChange={(e) => setAuctionDescription(e.target.value)}
+      helperText="Explain quality, variety, or any special info."
+    />
+
+    <TextField
+      label="Quantity to Auction (Kg)"
+      fullWidth
+      margin="normal"
+      type="number"
+      value={auctionQuantity}
+      onChange={(e) => setAuctionQuantity(e.target.value)}
+      helperText={`You can’t exceed your processed inventory. Available: ${
+        processedInventory.find(i => i.riceType === selectedAuctionItem?.riceType)?.quantity || 0
+      } Kg`}
+    />
+
+    <TextField
+      label="Starting Bid Price (₹ per Kg)"
+      fullWidth
+      margin="normal"
+      type="number"
+      value={startingBid}
+      onChange={(e) => setStartingBid(e.target.value)}
+      helperText="Minimum price you expect per Kg. Suggestion: cost + margin."
+    />
+
+    <TextField
+      label="Minimum Bid Increment (₹)"
+      fullWidth
+      margin="normal"
+      type="number"
+      value={bidIncrement}
+      onChange={(e) => setBidIncrement(e.target.value)}
+      helperText="How much each next bid must exceed by (₹1–₹50 recommended)."
+    />
+
+    <TextField
+      label="Auction Duration (in hours)"
+      fullWidth
+      margin="normal"
+      type="number"
+      value={auctionDuration}
+      onChange={(e) => setAuctionDuration(e.target.value)}
+      helperText="How long the auction will remain open (1–24 hours recommended)."
+    />
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={() => setAuctionDialogOpen(false)}>Cancel</Button>
+    <Button variant="contained" onClick={handleCreateAuction}>Create Auction</Button>
+  </DialogActions>
+</Dialog>
+
+
+
+
+
+
+
+
+
+
+
+<Dialog
+  open={Boolean(selectedAuctionForDetails)}
+  onClose={() => setSelectedAuctionForDetails(null)}
+  maxWidth="md"
+  fullWidth
+>
+  <DialogTitle>
+  Auction Summary — {selectedAuctionForDetails?.riceType} (Ended)
+</DialogTitle>
+  <DialogContent dividers>
+    {/* Carousel */}
+    {selectedAuctionForDetails?.images?.length > 0 && (
+      <SwipeableViews enableMouseEvents>
+        {selectedAuctionForDetails.images.map((img, index) => (
+          <Box key={index} sx={{ textAlign: 'center' }}>
+            <img
+              src={img}
+              alt={`Slide ${index}`}
+              style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'cover' }}
+            />
+          </Box>
+        ))}
+      </SwipeableViews>
+    )}
+
+    <Box mt={2}>
+  <Typography><strong>Final Bid:</strong> ₹{selectedAuctionForDetails?.highestBid?.amount || 'No bids placed'}</Typography>
+  <Typography><strong>Winner:</strong> {selectedAuctionForDetails?.highestBid?.wholesalerName || 'No winner'}</Typography>
+  <Typography><strong>Quantity:</strong> {selectedAuctionForDetails?.quantity} Kg</Typography>
+  <Typography><strong>Description:</strong> {selectedAuctionForDetails?.description}</Typography>
+</Box>
+
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setSelectedAuctionForDetails(null)}>Close</Button>
+  </DialogActions>
+</Dialog>
+
+
+
+
+
+<Dialog
+  open={!!summaryAuction}
+  onClose={() => setSummaryAuction(null)}
+  maxWidth="sm"
+  fullWidth
+>
+  <DialogTitle>Auction Summary</DialogTitle>
+  <DialogContent dividers>
+    {summaryAuction && (
+      <>
+        <Typography><strong>Rice Type:</strong> {summaryAuction.riceType}</Typography>
+        <Typography><strong>Quantity:</strong> {summaryAuction.quantity} Kg</Typography>
+        <Typography><strong>Start Price:</strong> ₹{summaryAuction.startingPricePerKg} / Kg</Typography>
+        <Typography>
+  Ended On:{' '}
+  {summaryAuction.endedEarly && summaryAuction.actualEndTime
+    ? new Date(summaryAuction.actualEndTime).toLocaleString()
+    : new Date(summaryAuction.endTime).toLocaleString()}
+</Typography>
+
+        <Typography><strong>End Time:</strong> {new Date(summaryAuction.endTime).toLocaleString()}</Typography>
+        <Typography><strong>Total Bids:</strong> {bidsByAuction[summaryAuction.id]?.length || 0}</Typography>
+
+        {summaryAuction.highestBid ? (
+          <>
+            <Typography><strong>Highest Bid:</strong> ₹{summaryAuction.highestBid.amount} / Kg</Typography>
+            <Typography><strong>Winner:</strong> {summaryAuction.highestBid.wholesalerName}</Typography>
+            <Typography><strong>Total Sale Value:</strong> ₹{(summaryAuction.highestBid.amount * summaryAuction.quantity).toFixed(2)}</Typography>
+          </>
+        ) : (
+          <Typography color="error"><strong>No bids were placed.</strong></Typography>
+        )}
+      </>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setSummaryAuction(null)} variant="contained">Close</Button>
+  </DialogActions>
+</Dialog>
+
 
 
 

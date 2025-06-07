@@ -114,20 +114,24 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 
-const fetchRouteCoords = async (start, end) => {
-  const apiKey = '5b3ce3597851110001cf6248e0c57f1143f94868ae4bf031d137a908'; // 🔁 Replace with your API key
+const fetchRouteCoords = async (start, end, reqId = '') => {
+  const apiKey = '5b3ce3597851110001cf6248e0c57f1143f94868ae4bf031d137a908'; // ✅ Your existing key
   const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${start[1]},${start[0]}&end=${end[1]},${end[0]}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
-    const coords = data.features[0].geometry.coordinates;
-    return coords.map(coord => [coord[1], coord[0]]); // flip lon-lat to lat-lon
+    if (!data?.features?.length) {
+      console.warn(`❌ No route found for request ${reqId}:`, data);
+      return null;
+    }
+    return data.features[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]);
   } catch (err) {
-    console.error("Failed to fetch route:", err);
+    console.error(`❌ Failed to fetch route for ${reqId}:`, err.message);
     return null;
   }
 };
+
 
 
 
@@ -303,12 +307,22 @@ useEffect(() => {
     for (const req of allRelevantRequests) {
       const key = `${req.id}`;
       if (!routeLines[key]) {
+        const dist = haversineDistance(req.pickupLat, req.pickupLon, req.millLat, req.millLon);
+        if (dist > 2000) {
+          console.warn(`⛔ Skipping route for ${req.id} (too far: ${dist.toFixed(1)} km)`);
+          continue;
+        }
+
         const route = await fetchRouteCoords(
           [req.pickupLat, req.pickupLon],
-          [req.millLat, req.millLon]
+          [req.millLat, req.millLon],
+          req.id
         );
+
         if (route) {
           setRouteLines(prev => ({ ...prev, [key]: route }));
+        } else {
+          console.warn(`⚠️ Falling back to straight line for ${req.id}`);
         }
       }
     }
@@ -317,7 +331,9 @@ useEffect(() => {
   if (logisticsRequests.length) {
     fetchAllRoutes();
   }
-}, [logisticsRequests]); // ⬅️ No need for mapViewMode anymore
+}, [logisticsRequests]);
+
+
 
 
 
@@ -412,16 +428,11 @@ if (pendingRequests.length === 0) {
       </Marker>
 
       {routeLines[req.id] ? (
-        <Polyline
-          positions={routeLines[req.id]}
-          color="blue"
-        />
-      ) : (
-        <Polyline
-          positions={[[req.pickupLat, req.pickupLon], [req.millLat, req.millLon]]}
-          color="gray"
-        />
-      )}
+  <Polyline positions={routeLines[req.id]} color={req.delivered ? 'green' : 'blue'} />
+) : (
+  <Polyline positions={[[req.pickupLat, req.pickupLon], [req.millLat, req.millLon]]} color="gray" />
+)}
+
     </MapContainer>
 
     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -1060,12 +1071,21 @@ const [dropLatAdj, dropLonAdj] = offsetCoords(req.millLat, req.millLon, idx);
               </Popup>
             </Marker>
 
-           {routeLines[req.id] && (
+      {routeLines[req.id] ? (
   <Polyline
     positions={routeLines[req.id].map(([lat, lon]) => offsetCoords(lat, lon, idx))}
     color={color}
   />
+) : (
+  <Polyline
+    positions={[
+      offsetCoords(req.pickupLat, req.pickupLon, idx),
+      offsetCoords(req.millLat, req.millLon, idx)
+    ]}
+    color="gray"
+  />
 )}
+
 
 
           </React.Fragment>
