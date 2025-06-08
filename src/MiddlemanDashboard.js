@@ -68,7 +68,7 @@ import razorpayLoadingAnim from './assets/razorpay-loading.json'; // ✅ Make su
 import SwipeableViews from 'react-swipeable-views';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import AuctionChatModal from './AuctionChatModal';
-
+import LiveAuctionCard from './LiveAuctionCard';
 
 
 
@@ -4280,200 +4280,129 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
 
 
 
-
-
 {tab === 9 && (
   <Box mt={2}>
-    <Typography variant="h6" gutterBottom>Live Auctions</Typography>
+    <Typography variant="h5" gutterBottom>
+      Live Auctions ({liveAuctions.length})
+    </Typography>
+
     {liveAuctions.length === 0 ? (
       <Typography>No live auctions currently.</Typography>
     ) : (
-      <Grid container spacing={2}>
-        {liveAuctions.map(auction => (
-          <Grid item xs={12} md={6} key={auction.id}>
-            <Card sx={{ p: 2, borderRadius: 3, boxShadow: 3, position: 'relative' }}>
-
-               <Chip
-      label={auction.status === 'live' ? 'Live' : 'Closed'}
-      color={auction.status === 'live' ? 'success' : 'default'}
-      sx={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        borderRadius: 1,
-        zIndex: 1
-      }}
-    />
-
-
-  {auction.images && auction.images.length > 0 && (
-    <Box mb={1} display="flex" gap={1} overflow="auto">
-      {auction.images.map((img, idx) => (
-        <img key={idx} src={img} alt="Auction" width={80} height={80} style={{ borderRadius: 8 }} />
-      ))}
-    </Box>
-  )}
-
-  <Typography variant="subtitle1" fontWeight={600}>
-    {auction.riceType} — {auction.quantity} Kg
-  </Typography>
-
-  <Typography fontStyle="italic" color="text.secondary" sx={{ mb: 1 }}>
-    {auction.description || 'No description provided.'}
-  </Typography>
-
-  <Typography variant="body2" color="text.secondary">
-    Starting Price: ₹{auction.startingPricePerKg} / Kg
-  </Typography>
-  <Typography variant="body2" color="text.secondary">
-    Min Increment: ₹{auction.minIncrement}
-  </Typography>
-  <Typography variant="body2" color="primary" fontWeight="bold">
-    Time Remaining: {getRemainingTime(auction.endTime)}
-  </Typography>
-  <Button
-  variant="outlined"
-  onClick={() => setSelectedAuctionForDetails(auction)}
->
-  See Full Details
-</Button>
-
-
-  <Box mt={2}>
-    <Button
-      variant="outlined"
-      color="error"
-      onClick={() => handleEndAuction(auction.id)}
-    >
-      End Auction Now
-    </Button>
-  </Box>
-
-  <Button
-  variant="outlined"
-  onClick={() => {
-  if (auction.status === 'closed') {
-    setSnack({
-      open: true,
-      message: '❌ Auction already ended. Chat is disabled.',
-      severity: 'error'
-    });
-    return;
-  }
-  setChatAuctionId(auction.id);
-  setChatAuctionData(auction); // Also store the auction object itself
-}}
-
->
-  Open Chat
-</Button>
-
-
- <Box
-    sx={{
-      background: '#e3f2fd',
-      borderRadius: 2,
-      p: 2,
-      mb: 2,
-      borderLeft: '6px solid #2196f3'
-    }}
-  >
-    <Typography variant="subtitle1" fontWeight="bold" color="primary">
-      🥇 Highest Bid:
-      {auction.highestBid?.amount
-        ? ` ₹${auction.highestBid.amount.toFixed(2)} / Kg`
-        : ' No bids yet'}
-    </Typography>
-
-    {auction.highestBid?.amount && (
-      <>
-        <Typography variant="body2" sx={{ mt: 1 }}>
-          🧑‍💼 Bidder: <strong>{auction.highestBid.wholesalerName || 'Unknown Bidder'}</strong>
-        </Typography>
-        <Typography variant="body2" sx={{ mt: 0.5 }}>
-          💰 Total Value: ₹
-          <strong>
-            {(auction.highestBid.amount * parseFloat(auction.quantity || 0)).toFixed(2)}
-          </strong>
-        </Typography>
-      </>
-    )}
-  </Box>
-
-
-<Box mt={2}>
-  <Typography variant="subtitle2" gutterBottom>Bids Received:</Typography>
-  {bidsByAuction[auction.id]?.length > 0 ? (
-    bidsByAuction[auction.id].map((bid, index) => (
-      <Card key={index} variant="outlined" sx={{ mb: 1, borderColor: bid.isHighest ? 'green' : 'grey.300' }}>
-        <CardContent>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Box display="flex" alignItems="center" gap={2}>
-              <Avatar src={bid.profilePicture || ''} />
-              <Box>
-                <Typography variant="subtitle1">{bid.wholesalerName}</Typography>
-                <Typography variant="body2" color="text.secondary">₹{bid.amount} per Kg</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Placed: {new Date(bid.bidTime).toLocaleString()}
-                </Typography>
-              </Box>
+      liveAuctions.map((auction) => (
+        <LiveAuctionCard
+          key={auction.id}
+          auction={auction}
+          bids={bidsByAuction[auction.id] || []}
+          timeLeftStr={getRemainingTime(auction.endTime)}
+          onJoinChat={() => {
+            if (auction.status === 'closed') {
+              setSnack({
+                open: true,
+                message: '❌ Auction already ended. Chat is disabled.',
+                severity: 'error'
+              });
+              return;
+            }
+            setChatAuctionId(auction.id);
+            setChatAuctionData(auction);
+          }}
+          onEndAuction={() => handleEndAuction(auction.id)}
+        >
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>
+              🔁 Live Bids (latest first):
+            </Typography>
+            <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
+              {[...(bidsByAuction[auction.id] || [])].sort((a, b) => b.bidTime - a.bidTime).map((bid, index) => (
+                <Card key={index} variant="outlined" sx={{ mb: 1, p: 1, background: bid.isHighest ? '#e8f5e9' : '#f9fbe7' }}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <Avatar src={bid.profilePicture || ''} />
+                    <Box flexGrow={1}>
+                      <Typography variant="body2" fontWeight="bold">
+                        {bid.wholesalerName || 'Unknown'} — ₹{bid.amount.toFixed(2)} / Kg
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(bid.bidTime).toLocaleString()}
+                      </Typography>
+                      {bid.surpassedBy && (
+                        <Typography variant="caption" color="error">
+                          Outbid by: {bid.surpassedBy.name} @ ₹{bid.surpassedBy.amount}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                </Card>
+              ))}
             </Box>
-            {bid.isHighest && (
-              <Chip label="Highest Bid" color="success" size="small" />
-            )}
           </Box>
-        </CardContent>
-      </Card>
-    ))
-  ) : (
-    <Typography color="text.secondary">No bids yet.</Typography>
-  )}
-</Box>
-
-
-
-
-
-</Card>
-          </Grid>
-        ))}
-      </Grid>
+        </LiveAuctionCard>
+      ))
     )}
-     {endedAuctions.length > 0 && (
-      <>
-        <Typography variant="h6" color="error" mt={4}>
+
+    {endedAuctions.length > 0 && (
+      <Box mt={5}>
+        <Typography variant="h5" color="error" gutterBottom>
           Ended Auctions
         </Typography>
         <Grid container spacing={2}>
           {endedAuctions.map((auction) => (
             <Grid item xs={12} md={6} key={auction.id}>
-              <Card sx={{ p: 2, border: '1px solid red', borderRadius: 2 }}>
+              <Card sx={{ p: 2, border: '1px solid #d32f2f', borderRadius: 2, background: '#fff8f8' }}>
                 <Typography variant="h6" color="error">
                   {auction.riceType} — {auction.quantity} Kg (Ended)
                 </Typography>
-                <Typography variant="body2">{auction.description}</Typography>
+                <Typography variant="body2" gutterBottom>{auction.description || 'No description provided.'}</Typography>
+                <Typography variant="body2">Starting Price: ₹{auction.startingPricePerKg} / Kg</Typography>
+                <Typography variant="body2">Min Increment: ₹{auction.minIncrement}</Typography>
+                <Typography variant="body2">Started At: {new Date(auction.startTime).toLocaleString()}</Typography>
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    background: '#fce4ec',
+                    borderRadius: 2,
+                    borderLeft: '5px solid #d81b60'
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight="bold" color="secondary">
+                    🏆 Highest Bid:
+                    {auction.highestBid?.amount
+                      ? ` ₹${auction.highestBid.amount.toFixed(2)} / Kg`
+                      : ' No bids placed'}
+                  </Typography>
 
-               <Button
-  variant="outlined"
-  sx={{ mt: 2 }}
-  onClick={() => {
-    const enriched = {
-      ...auction,
-      allBids: bidsByAuction[auction.id] || [],
-    };
-    setSelectedAuctionForDetails(enriched);
-  }}
->
-  View Summary
-</Button>
+                  {auction.highestBid?.amount && (
+                    <>
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        🧑‍💼 Bidder: <strong>{auction.highestBid.wholesalerName || 'Unknown'}</strong>
+                      </Typography>
+                      <Typography variant="body2">
+                        💰 Total Value: ₹{(auction.highestBid.amount * parseFloat(auction.quantity || 0)).toFixed(2)}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
 
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  onClick={() => {
+                    const enriched = {
+                      ...auction,
+                      allBids: bidsByAuction[auction.id] || []
+                    };
+                    setSelectedAuctionForDetails(enriched);
+                  }}
+                >
+                  View Summary
+                </Button>
               </Card>
             </Grid>
           ))}
         </Grid>
-      </>
+      </Box>
     )}
   </Box>
 )}

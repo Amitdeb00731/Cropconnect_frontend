@@ -385,6 +385,179 @@ const handlePlaceBid = async () => {
 
   const pastAuctions = liveAuctions.filter(a => a.status === 'closed');
 
+
+
+
+  const renderAuctionCardContent = (auction) => (
+  <>
+    <Chip
+      label={auction.status === 'closed' ? 'Closed' : 'Live'}
+      color={auction.status === 'closed' ? 'default' : 'success'}
+      size="small"
+      sx={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 1,
+        fontWeight: 'bold'
+      }}
+    />
+
+    {auction.images?.length > 0 && (
+      <Box mb={1} display="flex" gap={1} overflow="auto">
+        {auction.images.map((img, idx) => (
+          <img key={idx} src={img} alt="Auction" width={80} height={80} style={{ borderRadius: 8 }} />
+        ))}
+      </Box>
+    )}
+
+    <Typography fontWeight={600}>{auction.riceType} — {auction.quantity} Kg</Typography>
+    <Typography fontStyle="italic" color="text.secondary" sx={{ mb: 1 }}>
+      {auction.description || 'No description provided.'}
+    </Typography>
+    <Typography>Start: ₹{auction.startingPricePerKg} / Kg</Typography>
+    <Typography>Min Increment: ₹{auction.minIncrement}</Typography>
+    <Typography>
+      {auction.highestBid?.amount
+        ? `Current Highest Bid: ₹${auction.highestBid.amount}`
+        : 'No bids yet. Be the first to bid!'}
+    </Typography>
+
+    {/* Auction Leaderboard */}
+    {auction.allBids?.length > 0 && (
+      <Box mt={2} p={1.5} sx={{ background: '#eef2ff', borderRadius: 2 }}>
+        <Typography variant="subtitle2" fontWeight="bold" gutterBottom>🏆 Auction Leaderboard</Typography>
+        {Object.values(
+          auction.allBids.reduce((acc, bid) => {
+            const id = bid.wholesalerId;
+            if (!acc[id] || bid.amount > acc[id].amount) acc[id] = bid;
+            return acc;
+          }, {})
+        )
+          .sort((a, b) => b.amount - a.amount)
+          .map((bid, i) => {
+            const isYou = bid.wholesalerId === uid;
+            const isTop = i === 0;
+            return (
+              <Box key={i} display="flex" justifyContent="space-between" alignItems="center" mb={1} p={1}
+                sx={{
+                  borderRadius: 1,
+                  backgroundColor: isTop ? '#f0fff4' : '#fff',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  boxShadow: isTop ? 2 : 0
+                }}>
+                {isTop && (
+                  <Box sx={{
+                    position: 'absolute', top: 0, left: 0, height: '100%', width: '100%',
+                    display: 'flex', alignItems: 'center', zIndex: 0, opacity: 0.25, pointerEvents: 'none'
+                  }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Lottie animationData={winnerAnim2} loop autoplay style={{ height: '100%', width: '100%' }} />
+                    </Box>
+                  </Box>
+                )}
+                <Box display="flex" alignItems="center" gap={1} sx={{ zIndex: 1 }}>
+                  <Chip label={`#${i + 1}`} color={isTop ? 'success' : 'default'} size="small" />
+                  {bid.profilePicture ? (
+                    <img src={bid.profilePicture} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                  ) : (
+                    <Box sx={{
+                      width: 32, height: 32, borderRadius: '50%', backgroundColor: '#ccc',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff'
+                    }}>
+                      {bid.wholesalerName?.charAt(0) || 'W'}
+                    </Box>
+                  )}
+                  <Typography fontWeight={500}>
+                    {bid.wholesalerName || 'Anonymous'}
+                    {isYou && <Typography component="span" variant="caption" sx={{ color: 'primary.main', fontWeight: 600, ml: 0.5 }}>(you)</Typography>}
+                  </Typography>
+                </Box>
+                <Box textAlign="right" sx={{ zIndex: 1 }}>
+                  <Typography fontWeight={600}>₹{bid.amount.toFixed(2)} / Kg</Typography>
+                  <Typography variant="caption" color="text.secondary">{new Date(bid.bidTime).toLocaleString()}</Typography>
+                </Box>
+              </Box>
+            );
+          })}
+      </Box>
+    )}
+
+    {/* Your Bids */}
+    {auction.yourBids?.length > 0 && (
+      <Box mt={2} p={1.5} sx={{ background: '#f9fafb', borderRadius: 2 }}>
+        <Typography variant="subtitle2" fontWeight="bold" gutterBottom>🧾 Your Bids:</Typography>
+        {[...auction.yourBids].reverse().map((bid, i) => (
+          <Box key={i} mb={1.5} p={1} sx={{
+            borderRadius: 1,
+            backgroundColor: bid.wasHighest
+              ? bid.surpassedBy ? '#fff8f0' : '#e6ffed'
+              : '#f3f4f6'
+          }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="body2">₹{bid.amount.toFixed(2)} / Kg</Typography>
+              <Typography variant="caption" color="text.secondary">{new Date(bid.bidTime).toLocaleString()}</Typography>
+            </Box>
+            {bid.wasHighest ? (
+              bid.surpassedBy ? (
+                <Typography variant="caption" color="error.main">⛔ Outbid by <strong>{bid.surpassedBy.name}</strong> for ₹{bid.surpassedBy.amount.toFixed(2)}</Typography>
+              ) : (
+                <Typography variant="caption" color="success.main">✅ Still the highest bid</Typography>
+              )
+            ) : (
+              <Typography variant="caption" color="text.secondary">📉 This bid was not the highest</Typography>
+            )}
+          </Box>
+        ))}
+      </Box>
+    )}
+
+    {/* Win/Loss Info */}
+    {auction.status === 'closed' ? (
+      auction.highestBid?.wholesalerId === uid ? (
+        <>
+          <Lottie animationData={winnerAnim} style={{ height: 120 }} loop={false} />
+          <Typography color="success.main" fontWeight="bold">🎉 You won this auction!</Typography>
+        </>
+      ) : (
+        <Typography color="error" fontWeight="bold">Auction Ended</Typography>
+      )
+    ) : (
+      <Typography color="primary" fontWeight="bold">
+        Time Left: {getRemainingTime(auction)}
+      </Typography>
+    )}
+
+    {/* Action Buttons */}
+    <Button
+      variant="contained"
+      sx={{ mt: 2 }}
+      onClick={() => setBiddingAuction(auction)}
+      disabled={auction.status === 'closed'}
+    >
+      {auction.status === 'closed' ? 'Auction Closed' : 'Place Bid'}
+    </Button>
+    <Button variant="outlined" onClick={() => setSelectedAuctionForDetails(auction)}>See Full Details</Button>
+    <Button
+      variant="outlined"
+      onClick={() => {
+        if (auction.status === 'closed') {
+          setSnack({ open: true, message: '❌ Auction already ended. Chat is disabled.', severity: 'error' });
+          return;
+        }
+        setChatAuctionId(auction.id);
+        setChatAuctionData(auction);
+      }}
+    >
+      Open Chat
+    </Button>
+  </>
+);
+
+
+
+
   return (
     <Container maxWidth="lg">
       <TopNavbar />
@@ -518,296 +691,56 @@ const handlePlaceBid = async () => {
 
 
 
-      {tab === 1 && (
+{tab === 1 && (
   <Box mt={4}>
-    <Typography variant="h6" gutterBottom>Live Auctions</Typography>
-    {liveAuctions.length === 0 ? (
-      <Typography>No auctions available.</Typography>
+    {/* 🟢 LIVE AUCTIONS */}
+    <Typography variant="h6" gutterBottom>🟢 Live Auctions</Typography>
+    {liveAuctions.filter(a => a.status === 'live').length === 0 ? (
+      <Typography>No live auctions available.</Typography>
     ) : (
       <Grid container spacing={2}>
-        {liveAuctions.map(auction => (
+        {liveAuctions.filter(a => a.status === 'live').map(auction => (
           <Grid item xs={12} md={6} key={auction.id}>
-           <Paper sx={{ p: 2, borderRadius: 2, position: 'relative' }}>
-  <Chip
-    label={auction.status === 'closed' ? 'Closed' : 'Live'}
-    color={auction.status === 'closed' ? 'default' : 'success'}
-    size="small"
-    sx={{
-      position: 'absolute',
-      top: 8,
-      right: 8,
-      zIndex: 1,
-      fontWeight: 'bold'
-    }}
-  />
-
-  {auction.images && auction.images.length > 0 && (
-    <Box mb={1} display="flex" gap={1} overflow="auto">
-      {auction.images.map((img, idx) => (
-        <img key={idx} src={img} alt="Auction" width={80} height={80} style={{ borderRadius: 8 }} />
-      ))}
-    </Box>
-  )}
-
-  <Typography fontWeight={600}>
-    {auction.riceType} — {auction.quantity} Kg
-  </Typography>
-
-  <Typography fontStyle="italic" color="text.secondary" sx={{ mb: 1 }}>
-    {auction.description || 'No description provided.'}
-  </Typography>
-
-  <Typography>Start: ₹{auction.startingPricePerKg} / Kg</Typography>
-  <Typography>Min Increment: ₹{auction.minIncrement}</Typography>
-  <Typography>
-  {auction.highestBid?.amount
-    ? `Current Highest Bid: ₹${auction.highestBid.amount}`
-    : 'No bids yet. Be the first to bid!'}
-</Typography>
-
-
-{auction.allBids && auction.allBids.length > 0 && (
-  <Box mt={2} p={1.5} sx={{ background: '#eef2ff', borderRadius: 2 }}>
-    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-      🏆 Auction Leaderboard
-    </Typography>
-
-    {Object.values(
-  auction.allBids.reduce((acc, bid) => {
-    const id = bid.wholesalerId;
-    if (!acc[id] || bid.amount > acc[id].amount) {
-      acc[id] = bid;
-    }
-    return acc;
-  }, {})
-)
-  .sort((a, b) => b.amount - a.amount)
-  .map((bid, i) => {
-    const isYou = bid.wholesalerId === uid;
-    const isTop = i === 0;
-
-    return (
-      <Box
-        key={i}
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={1}
-        p={1}
-        sx={{
-          borderRadius: 1,
-          backgroundColor: isTop ? '#f0fff4' : '#fff',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: isTop ? 2 : 0
-        }}
-      >
-        {/* 🎉 Background Lottie animation behind text for top bidder */}
-        {isTop && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              height: '100%',
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              zIndex: 0,
-              opacity: 0.25,
-              pointerEvents: 'none'
-            }}
-          >
-            <Box sx={{ flex: 1 }}>
-              <Lottie
-                animationData={winnerAnim2}
-                loop
-                autoplay
-                style={{ height: '100%', width: '100%' }}
-              />
-            </Box>
-          </Box>
-        )}
-
-        {/* Main content above the animation */}
-        <Box display="flex" alignItems="center" gap={1} sx={{ zIndex: 1 }}>
-          <Chip
-            label={`#${i + 1}`}
-            color={isTop ? 'success' : 'default'}
-            size="small"
-          />
-
-          {bid.profilePicture ? (
-            <img
-              src={bid.profilePicture}
-              alt="avatar"
-              style={{ width: 32, height: 32, borderRadius: '50%' }}
-            />
-          ) : (
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                backgroundColor: '#ccc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 14,
-                color: '#fff'
-              }}
-            >
-              {bid.wholesalerName?.charAt(0) || 'W'}
-            </Box>
-          )}
-
-          <Typography fontWeight={500}>
-            {bid.wholesalerName || 'Anonymous'}
-            {isYou && (
-              <Typography
-                component="span"
-                variant="caption"
-                sx={{ color: 'primary.main', fontWeight: 600, ml: 0.5 }}
-              >
-                (you)
-              </Typography>
-            )}
-          </Typography>
-        </Box>
-
-        <Box textAlign="right" sx={{ zIndex: 1 }}>
-          <Typography fontWeight={600}>
-            ₹{bid.amount.toFixed(2)} / Kg
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {new Date(bid.bidTime).toLocaleString()}
-          </Typography>
-        </Box>
-      </Box>
-    );
-  })}
-
-
-  </Box>
-)}
-
-
-{auction.yourBids && auction.yourBids.length > 0 && (
-  <Box mt={2} p={1.5} sx={{ background: '#f9fafb', borderRadius: 2 }}>
-    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-      🧾 Your Bids:
-    </Typography>
-
-    {[...auction.yourBids].reverse().map((bid, i) => (
-      <Box
-        key={i}
-        mb={1.5}
-        p={1}
-        sx={{
-          borderRadius: 1,
-          backgroundColor: bid.wasHighest
-            ? bid.surpassedBy
-              ? '#fff8f0' // yellow tint if outbid
-              : '#e6ffed' // green tint if still highest
-            : '#f3f4f6'
-        }}
-      >
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="body2">
-            ₹{bid.amount.toFixed(2)} / Kg
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {new Date(bid.bidTime).toLocaleString()}
-          </Typography>
-        </Box>
-
-        {bid.wasHighest ? (
-          bid.surpassedBy ? (
-            <Typography variant="caption" color="error.main">
-              ⛔ Outbid by <strong>{bid.surpassedBy.name}</strong> for ₹{bid.surpassedBy.amount.toFixed(2)} at {new Date(bid.surpassedBy.time).toLocaleString()}
-            </Typography>
-          ) : (
-            <Typography variant="caption" color="success.main">
-              ✅ Still the highest bid
-            </Typography>
-          )
-        ) : (
-          <Typography variant="caption" color="text.secondary">
-            📉 This bid was not the highest
-          </Typography>
-        )}
-      </Box>
-    ))}
-  </Box>
-)}
-
-
-
-
-{auction.status === 'closed' ? (
-  auction.highestBid?.wholesalerId === uid ? (
-    <>
-      <Lottie animationData={winnerAnim} style={{ height: 120 }} loop={false} />
-      <Typography color="success.main" fontWeight="bold">
-        🎉 You won this auction!
-      </Typography>
-    </>
-  ) : (
-    <Typography color="error" fontWeight="bold">
-      Auction Ended
-    </Typography>
-  )
-) : (
-  <Typography color="primary" fontWeight="bold">
-    Time Left: {getRemainingTime(auction)}
-  </Typography>
-)}
-
-
-
-  <Button
-  variant="contained"
-  sx={{ mt: 2 }}
-  onClick={() => setBiddingAuction(auction)}
-  disabled={auction.status === 'closed'}
->
-  {auction.status === 'closed' ? 'Auction Closed' : 'Place Bid'}
-</Button>
-  <Button
-  variant="outlined"
-  onClick={() => setSelectedAuctionForDetails(auction)}
->
-  See Full Details
-</Button>
-
-<Button
-  variant="outlined"
-  onClick={() => {
-  if (auction.status === 'closed') {
-    setSnack({
-      open: true,
-      message: '❌ Auction already ended. Chat is disabled.',
-      severity: 'error'
-    });
-    return;
-  }
-  setChatAuctionId(auction.id);
-  setChatAuctionData(auction); // Also store the auction object itself
-}}
-
->
-  Open Chat
-</Button>
-
-
-</Paper>
-
+            <Paper sx={{ p: 2, borderRadius: 2, position: 'relative' }}>
+              {renderAuctionCardContent(auction)}
+            </Paper>
           </Grid>
         ))}
       </Grid>
     )}
+
+    {/* 🔴 CLOSED AUCTIONS */}
+    <Box mt={6}>
+      <Typography variant="h6" gutterBottom>🔴 Closed Auctions You've Participated In</Typography>
+      {liveAuctions.filter(a => a.status === 'closed').length === 0 ? (
+        <Typography>No closed auctions found.</Typography>
+      ) : (
+        <Grid container spacing={2}>
+          {liveAuctions.filter(a => a.status === 'closed').map(auction => (
+            <Grid item xs={12} md={6} key={auction.id}>
+              <Accordion>
+                <AccordionSummary expandIcon={<i className="fas fa-chevron-down" />}>
+                  <Box display="flex" flexDirection="column">
+                    <Typography fontWeight={600}>{auction.riceType} — {auction.quantity} Kg</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Ended • {new Date(auction.actualEndTime || auction.endTime).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Box sx={{ p: 1 }}>
+                    {renderAuctionCardContent(auction)}
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+    </Box>
   </Box>
 )}
+
 
 
 
