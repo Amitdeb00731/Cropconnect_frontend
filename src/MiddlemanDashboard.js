@@ -4455,13 +4455,20 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
                 </Typography>
                 <Typography variant="body2">{auction.description}</Typography>
 
-                <Button
-                  variant="outlined"
-                  sx={{ mt: 2 }}
-                  onClick={() => setSelectedAuctionForDetails(auction)}
-                >
-                  View Summary
-                </Button>
+               <Button
+  variant="outlined"
+  sx={{ mt: 2 }}
+  onClick={() => {
+    const enriched = {
+      ...auction,
+      allBids: bidsByAuction[auction.id] || [],
+    };
+    setSelectedAuctionForDetails(enriched);
+  }}
+>
+  View Summary
+</Button>
+
               </Card>
             </Grid>
           ))}
@@ -5049,10 +5056,10 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
   fullWidth
 >
   <DialogTitle>
-  Auction Summary — {selectedAuctionForDetails?.riceType} (Ended)
-</DialogTitle>
+    Auction Summary — {selectedAuctionForDetails?.riceType || 'Unknown'} (Ended)
+  </DialogTitle>
   <DialogContent dividers>
-    {/* Carousel */}
+    {/* Image Carousel */}
     {selectedAuctionForDetails?.images?.length > 0 && (
       <SwipeableViews enableMouseEvents>
         {selectedAuctionForDetails.images.map((img, index) => (
@@ -5068,18 +5075,63 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
     )}
 
     <Box mt={2}>
-  <Typography><strong>Final Bid:</strong> ₹{selectedAuctionForDetails?.highestBid?.amount || 'No bids placed'}</Typography>
-  <Typography><strong>Winner:</strong> {selectedAuctionForDetails?.highestBid?.wholesalerName || 'No winner'}</Typography>
-  <Typography><strong>Quantity:</strong> {selectedAuctionForDetails?.quantity} Kg</Typography>
-  <Typography><strong>Description:</strong> {selectedAuctionForDetails?.description}</Typography>
-</Box>
+      <Typography variant="h6">📋 Auction Details</Typography>
+      <Typography><strong>Rice Type:</strong> {selectedAuctionForDetails?.riceType || 'N/A'}</Typography>
+      <Typography><strong>Quantity:</strong> {selectedAuctionForDetails?.quantity || 0} Kg</Typography>
+      <Typography><strong>Description:</strong> {selectedAuctionForDetails?.description || 'No description'}</Typography>
+      <Typography><strong>Starting Price:</strong> ₹{selectedAuctionForDetails?.startingPricePerKg || 0} / Kg</Typography>
+      <Typography><strong>Min Increment:</strong> ₹{selectedAuctionForDetails?.minIncrement || 0}</Typography>
+      <Typography><strong>Start Time:</strong> {new Date(selectedAuctionForDetails?.timestamp).toLocaleString()}</Typography>
+      <Typography><strong>End Time:</strong> {new Date(selectedAuctionForDetails?.actualEndTime || selectedAuctionForDetails?.endTime).toLocaleString()}</Typography>
+    </Box>
 
+    <Box mt={3}>
+      <Typography variant="h6">🏆 Winning Details</Typography>
+      {selectedAuctionForDetails?.highestBid ? (
+        <>
+          <Typography><strong>Name:</strong> {selectedAuctionForDetails.highestBid.wholesalerName}</Typography>
+          <Typography><strong>Winning Bid:</strong> ₹{selectedAuctionForDetails.highestBid.amount} / Kg</Typography>
+          <Typography><strong>Total Value:</strong> ₹{(selectedAuctionForDetails.highestBid.amount * selectedAuctionForDetails.quantity).toFixed(2)}</Typography>
+        </>
+      ) : (
+        <Typography>No bids were placed.</Typography>
+      )}
+    </Box>
+
+    <Box mt={3}>
+      <Typography variant="h6">📈 Leaderboard</Typography>
+      {Object.values(
+        (selectedAuctionForDetails?.allBids || []).reduce((acc, bid) => {
+          if (!acc[bid.wholesalerId] || bid.amount > acc[bid.wholesalerId].amount) {
+            acc[bid.wholesalerId] = bid;
+          }
+          return acc;
+        }, {})
+      )
+        .sort((a, b) => b.amount - a.amount)
+        .map((bid, i) => (
+          <Box
+            key={i}
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              p: 1,
+              mb: 1,
+              borderRadius: 1,
+              border: '1px solid #ccc',
+              backgroundColor: i === 0 ? '#e6ffed' : '#fff',
+            }}
+          >
+            <Typography>#{i + 1} {bid.wholesalerName}</Typography>
+            <Typography>₹{bid.amount} / Kg — {new Date(bid.bidTime).toLocaleString()}</Typography>
+          </Box>
+        ))}
+    </Box>
   </DialogContent>
   <DialogActions>
     <Button onClick={() => setSelectedAuctionForDetails(null)}>Close</Button>
   </DialogActions>
 </Dialog>
-
 
 
 
