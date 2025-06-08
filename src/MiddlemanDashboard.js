@@ -152,6 +152,13 @@ const [chatAuctionData, setChatAuctionData] = useState(null);
 const [chatAuctionId, setChatAuctionId] = useState(null);
 
 
+
+
+const [sortEndedOption, setSortEndedOption] = useState('latest'); // latest | oldest | highestBid
+const [filterRiceTypeEnded, setFilterRiceTypeEnded] = useState('');
+
+
+
 const [auctionDialogOpen, setAuctionDialogOpen] = useState(false);
 const [selectedAuctionItem, setSelectedAuctionItem] = useState(null);
 const [auctionQuantity, setAuctionQuantity] = useState('');
@@ -2677,6 +2684,30 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
 
 
 
+
+
+
+const filteredAndSortedEndedAuctions = endedAuctions
+  .filter(auction => {
+    if (filterRiceTypeEnded && auction.riceType !== filterRiceTypeEnded) return false;
+    return true;
+  })
+  .sort((a, b) => {
+    switch (sortEndedOption) {
+      case 'oldest':
+        return (a.actualEndTime || a.endTime || 0) - (b.actualEndTime || b.endTime || 0);
+      case 'highestBid':
+        return (b.highestBid?.amount || 0) - (a.highestBid?.amount || 0);
+      case 'latest':
+      default:
+        return (b.actualEndTime || b.endTime || 0) - (a.actualEndTime || a.endTime || 0);
+    }
+  });
+
+
+
+
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
     <Container sx={{ py: 4 }}>
@@ -4345,8 +4376,39 @@ const processedRiceTypes = processedInventory.map(i => i.riceType);
         <Typography variant="h5" color="error" gutterBottom>
           Ended Auctions
         </Typography>
+
+        <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
+  <FormControl size="small" sx={{ minWidth: 160 }}>
+    <InputLabel>Sort By</InputLabel>
+    <Select
+      value={sortEndedOption}
+      onChange={(e) => setSortEndedOption(e.target.value)}
+      label="Sort By"
+    >
+      <MenuItem value="latest">Latest First</MenuItem>
+      <MenuItem value="oldest">Oldest First</MenuItem>
+      <MenuItem value="highestBid">Highest Bid</MenuItem>
+    </Select>
+  </FormControl>
+
+  <FormControl size="small" sx={{ minWidth: 160 }}>
+    <InputLabel>Rice Type</InputLabel>
+    <Select
+      value={filterRiceTypeEnded}
+      onChange={(e) => setFilterRiceTypeEnded(e.target.value)}
+      label="Rice Type"
+    >
+      <MenuItem value="">All</MenuItem>
+      {[...new Set(endedAuctions.map(a => a.riceType))].map((type) => (
+        <MenuItem key={type} value={type}>{type}</MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+</Box>
+
+
         <Grid container spacing={2}>
-          {endedAuctions.map((auction) => (
+          {filteredAndSortedEndedAuctions.map((auction) => (
             <Grid item xs={12} md={6} key={auction.id}>
               <Card sx={{ p: 2, border: '1px solid #d32f2f', borderRadius: 2, background: '#fff8f8' }}>
                 <Typography variant="h6" color="error">
