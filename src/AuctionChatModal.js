@@ -12,7 +12,10 @@ import { format } from 'date-fns';
 import { Player } from '@lottiefiles/react-lottie-player';
 import moderatorAnim from './assets/moderator-lottie.json';
 import bidderAnim from './assets/bidder-lottie.json';
-
+import { writeBatch } from 'firebase/firestore';
+import {
+  Popover, List, ListItem, ListItemAvatar, ListItemText
+} from '@mui/material';
 
 
 
@@ -29,6 +32,16 @@ export default function AuctionChatModal({ open, onClose, auctionId,  auction })
 const [showOnlineList, setShowOnlineList] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+
+  const [replyTo, setReplyTo] = useState(null);
+
+
+  const [allUsersMap, setAllUsersMap] = useState({});
+
+
+  const [readByAnchorEl, setReadByAnchorEl] = useState(null);
+const [selectedReadBy, setSelectedReadBy] = useState([]);
 
 
 useEffect(() => {
@@ -155,74 +168,215 @@ useEffect(() => {
 
 
 
-  useEffect(() => {
-    if (!auctionId || !authorized) return;
+ useEffect(() => {
+  if (!auctionId || !authorized) return;
 
-    const q = query(collection(db, 'auctionChats', auctionId, 'messages'), orderBy('timestamp'));
+  const q = query(collection(db, 'auctionChats', auctionId, 'messages'), orderBy('timestamp'));
 
-    const unsub = onSnapshot(q, snap => {
-      setMessages(snap.docs.map(doc => doc.data()));
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  const unsub = onSnapshot(q, async (snap) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // 📦 Extract messages with IDs for updating
+    const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setMessages(msgs);
+
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+    // ✅ Mark unread messages as read
+    const batch = writeBatch(db);
+    msgs.forEach(msg => {
+      if (!msg.readBy || !msg.readBy[user.uid]) {
+        const msgRef = doc(db, 'auctionChats', auctionId, 'messages', msg.id);
+        batch.update(msgRef, {
+          [`readBy.${user.uid}`]: Timestamp.now()
+        });
+      }
     });
 
-    return () => unsub();
-  }, [auctionId, authorized]);
+    if (msgs.length > 0) {
+      try {
+        await batch.commit();
+      } catch (err) {
+        console.error('Failed to mark messages as read:', err);
+      }
+    }
+  });
+
+  return () => unsub();
+}, [auctionId, authorized]);
+
+
+
 
 const handleSend = async () => {
   const user = auth.currentUser;
   if (!newMessage.trim() || !userProfile || !auctionData) return;
 
-  // 1. Send the message to Firestore
-  await addDoc(collection(db, 'auctionChats', auctionId, 'messages'), {
+  const messageData = {
     senderId: user.uid,
     senderName: userProfile.name || 'User',
     profilePicture: userProfile.profilePicture || null,
     role: user.uid === auctionData.middlemanId ? 'moderator' : 'bidder',
     message: newMessage.trim(),
-    timestamp: Timestamp.now()
-  });
+    timestamp: Timestamp.now(),
+    readBy: { [user.uid]: Timestamp.now() }
+  };
 
-  // 2. Clear your typing status
+  if (replyTo) {
+    messageData.replyTo = {
+      senderId: replyTo.senderId,
+      senderName: replyTo.senderName,
+      message: replyTo.message
+    };
+  }
+
+  await addDoc(collection(db, 'auctionChats', auctionId, 'messages'), messageData);
+
+  // clear typing and input
   await setDoc(doc(db, 'auctionChats', auctionId, 'typing', user.uid), {
     name: userProfile.name || 'User',
-    timestamp: Timestamp.fromDate(new Date(0)) // epoch -> disables indicator
+    timestamp: Timestamp.fromDate(new Date(0))
   });
 
   setNewMessage('');
+  setReplyTo(null); // ✅ clear reply context after send
 };
 
 
-  const renderMessage = (msg, i) => {
-    const isOwn = msg.senderId === auth.currentUser?.uid;
-    const name = isOwn ? 'You' : msg.senderName;
-    const time = msg.timestamp?.toDate?.() ? format(msg.timestamp.toDate(), 'p') : '';
 
-    return (
-      <Box key={i} display="flex" justifyContent={isOwn ? 'flex-end' : 'flex-start'} mb={1}>
-        <Stack
-          direction="row"
-          spacing={1}
-          alignItems="flex-start"
-          sx={{
-            maxWidth: '75%',
-            bgcolor: isOwn ? '#DCF8C6' : '#F1F1F1',
-            p: 1.5,
-            borderRadius: 2,
-            flexDirection: isOwn ? 'row-reverse' : 'row',
-          }}
-        >
-          <Avatar src={msg.profilePicture} alt={name} sx={{ width: 32, height: 32 }} />
-          <Box>
-            <Typography fontWeight="bold" variant="subtitle2">
-              {name} {msg.role === 'moderator' ? '(Moderator)' : '(Bidder)'}
-            </Typography>
-            <Typography variant="body2">{msg.message}</Typography>
-            <Typography variant="caption" sx={{ color: 'gray' }}>{time}</Typography>
-          </Box>
-        </Stack>
-      </Box>
-    );
+useEffect(() => {
+  const fetchAllChatUsers = async () => {
+    if (!auctionId) return;
+    const users = {};
+    const usersCol = collection(db, 'auctionChats', auctionId, 'onlineUsers');
+    const usersSnap = await getDocs(usersCol);
+    usersSnap.forEach(doc => {
+      users[doc.id] = doc.data();
+    });
+    setAllUsersMap(users);
   };
+  fetchAllChatUsers();
+}, [auctionId]);
+
+
+
+const renderMessage = (msg, i) => {
+  const isOwn = msg.senderId === auth.currentUser?.uid;
+  const name = isOwn ? 'You' : msg.senderName;
+  const time = msg.timestamp?.toDate?.() ? format(msg.timestamp.toDate(), 'p') : '';
+
+ const othersRead = Object.entries(msg.readBy || {})
+  .filter(([uid]) => uid !== msg.senderId)
+  .map(([uid]) => {
+    const user = allUsersMap[uid];
+    return {
+      uid,
+      name: user?.name || 'Someone',
+      profilePicture: user?.profilePicture || '',
+      role: user?.role || 'Bidder'
+    };
+  });
+
+  const visibleAvatars = othersRead.slice(0, 3);
+  const extraCount = othersRead.length - visibleAvatars.length;
+
+  return (
+    <Box key={i} display="flex" justifyContent={isOwn ? 'flex-end' : 'flex-start'} mb={1}>
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="flex-start"
+        sx={{
+          maxWidth: '75%',
+          bgcolor: isOwn ? '#DCF8C6' : '#F1F1F1',
+          p: 1.5,
+          borderRadius: 2,
+          flexDirection: isOwn ? 'row-reverse' : 'row',
+        }}
+      >
+        <Avatar src={msg.profilePicture} alt={name} sx={{ width: 32, height: 32 }} />
+        <Box>
+          <Typography fontWeight="bold" variant="subtitle2">
+            {name} {msg.role === 'moderator' ? '(Moderator)' : '(Bidder)'}
+          </Typography>
+
+
+           {msg.replyTo && (
+            <Box
+              sx={{
+                background: '#f0f0f0',
+                borderLeft: '4px solid #888',
+                padding: '4px 8px',
+                mb: 1,
+                borderRadius: 1
+              }}
+            >
+              <Typography variant="caption" fontWeight="bold">
+                Reply to {msg.replyTo.senderName}
+              </Typography>
+              <Typography variant="caption" noWrap>
+                {msg.replyTo.message}
+              </Typography>
+            </Box>
+          )}
+
+
+          <Typography variant="body2">{msg.message}</Typography>
+
+          <Typography variant="caption" sx={{ color: 'gray' }}>{time}</Typography>
+
+            <Typography
+            variant="caption"
+            sx={{ color: 'blue', textDecoration: 'underline', cursor: 'pointer', mt: 0.5, display: 'inline-block' }}
+            onClick={() => setReplyTo({ senderId: msg.senderId, senderName: msg.senderName, message: msg.message })}
+          >
+            Reply
+          </Typography>
+
+
+          {isOwn && othersRead.length > 0 && (
+            <Box mt={0.5} display="flex" alignItems="center" gap={0.5}>
+              <Typography variant="caption" color="primary">✔ Read by:</Typography>
+              {visibleAvatars.map((user, idx) => (
+                <Avatar
+                  key={idx}
+                  src={user.profilePicture}
+                  alt={user.name}
+                  sx={{ width: 20, height: 20 }}
+                />
+              ))}
+              {extraCount > 0 && (
+                <Avatar
+                  sx={{ width: 20, height: 20, bgcolor: 'grey.500', fontSize: 12, cursor: 'pointer' }}
+                  onClick={(e) => {
+                    setSelectedReadBy(othersRead);
+                    setReadByAnchorEl(e.currentTarget);
+                  }}
+                >
+                  +{extraCount}
+                </Avatar>
+              )}
+              {othersRead.length <= 3 && (
+                <Box
+                  sx={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 12 }}
+                  onClick={(e) => {
+                    setSelectedReadBy(othersRead);
+                    setReadByAnchorEl(e.currentTarget);
+                  }}
+                >
+                  details
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      </Stack>
+    </Box>
+  );
+};
+
+
 
  return (
   <>
@@ -264,6 +418,30 @@ const handleSend = async () => {
 
       {authorized && (
         <DialogActions>
+
+        {replyTo && (
+  <Box
+    display="flex"
+    alignItems="center"
+    justifyContent="space-between"
+    sx={{
+      bgcolor: '#e0f7fa',
+      p: 1,
+      borderRadius: 1,
+      mb: 1
+    }}
+  >
+    <Box>
+      <Typography variant="caption" fontWeight="bold">
+        Replying to {replyTo.senderName}
+      </Typography>
+      <Typography variant="body2" noWrap>{replyTo.message}</Typography>
+    </Box>
+    <Button onClick={() => setReplyTo(null)} size="small" color="error">Cancel</Button>
+  </Box>
+)}
+
+
           <TextField
             fullWidth
             size="small"
@@ -317,6 +495,27 @@ const handleSend = async () => {
     )}
         </DialogActions>
       )}
+      <Popover
+  open={Boolean(readByAnchorEl)}
+  anchorEl={readByAnchorEl}
+  onClose={() => setReadByAnchorEl(null)}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+>
+  <List sx={{ minWidth: 220 }}>
+    {selectedReadBy.map((user, idx) => (
+      <ListItem key={idx}>
+        <ListItemAvatar>
+          <Avatar src={user.profilePicture} />
+        </ListItemAvatar>
+        <ListItemText
+          primary={user.name}
+          secondary={user.role === 'moderator' ? 'Moderator' : 'Bidder'}
+        />
+      </ListItem>
+    ))}
+  </List>
+</Popover>
     </Dialog>
 
     {/* ✅ Online Users Dialog */}
@@ -381,6 +580,7 @@ const handleSend = async () => {
       <DialogActions>
         <Button onClick={() => setShowOnlineList(false)}>Close</Button>
       </DialogActions>
+      
     </Dialog>
   </>
 );
