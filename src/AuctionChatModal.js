@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Avatar,
-  TextField, Button, Box, Typography, Divider, Stack
+  TextField, Button, Box, Typography, Divider, Stack, Switch, FormControlLabel, Chip
 } from '@mui/material';
 import { db, auth } from './firebase';
 import {
@@ -16,6 +16,9 @@ import { writeBatch } from 'firebase/firestore';
 import {
   Popover, List, ListItem, ListItemAvatar, ListItemText
 } from '@mui/material';
+import annAnim from './assets/announcement.json';
+import GavelIcon from '@mui/icons-material/Gavel';
+
 
 
 
@@ -34,10 +37,19 @@ const [showOnlineList, setShowOnlineList] = useState(false);
   const typingTimeoutRef = useRef(null);
 
 
+
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+const [topBids, setTopBids] = useState([]);
+
+
   const [replyTo, setReplyTo] = useState(null);
 
 
   const [allUsersMap, setAllUsersMap] = useState({});
+
+
+  const [isAnnouncement, setIsAnnouncement] = useState(false);
+
 
 
   const [readByAnchorEl, setReadByAnchorEl] = useState(null);
@@ -116,6 +128,11 @@ useEffect(() => {
       const auction = auctionSnap.data();
       setAuctionData(auction);
 
+
+
+
+
+
       // Fetch user profile
       const userSnap = await getDoc(doc(db, 'users', user.uid));
       const profile = userSnap.exists() ? userSnap.data() : {};
@@ -135,6 +152,28 @@ useEffect(() => {
 
     fetchInfo();
   }, [auctionId]);
+
+
+
+
+  useEffect(() => {
+  if (!auctionId) return;
+
+  const q = query(
+    collection(db, 'auctions', auctionId, 'bids'),
+    orderBy('amount', 'desc')
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const updated = snap.docs.map(doc => doc.data());
+    setTopBids(updated);
+  });
+
+  return () => unsub();
+}, [auctionId]);
+
+
+
 
 
   useEffect(() => {
@@ -220,7 +259,8 @@ const handleSend = async () => {
     role: user.uid === auctionData.middlemanId ? 'moderator' : 'bidder',
     message: newMessage.trim(),
     timestamp: Timestamp.now(),
-    readBy: { [user.uid]: Timestamp.now() }
+    readBy: { [user.uid]: Timestamp.now() },
+    isAnnouncement: isAnnouncement || false
   };
 
   if (replyTo) {
@@ -240,7 +280,9 @@ const handleSend = async () => {
   });
 
   setNewMessage('');
-  setReplyTo(null); // ✅ clear reply context after send
+  setReplyTo(null);
+  setIsAnnouncement(false);
+ // ✅ clear reply context after send
 };
 
 
@@ -262,6 +304,49 @@ useEffect(() => {
 
 
 const renderMessage = (msg, i) => {
+
+
+ if (msg.isAnnouncement) {
+  return (
+    <Box key={i} width="100%" my={2}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          bgcolor: 'warning.main',
+          color: 'white',
+          px: 3,
+          py: 2,
+          borderRadius: 2,
+          boxShadow: 3,
+          animation: 'fadeIn 0.5s ease-in-out',
+        }}
+      >
+        <Player
+          autoplay
+          loop
+          src={annAnim}
+          style={{ height: 60, width: 60, marginRight: 16 }}
+        />
+        <Box>
+          <Typography variant="subtitle1" fontWeight="bold">
+            Moderator Announcement
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 0.5 }}>
+            {msg.message}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+            {msg.timestamp?.toDate ? format(msg.timestamp.toDate(), 'PPPpp') : ''}
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+
+
+
   const isOwn = msg.senderId === auth.currentUser?.uid;
   const name = isOwn ? 'You' : msg.senderName;
   const time = msg.timestamp?.toDate?.() ? format(msg.timestamp.toDate(), 'p') : '';
@@ -390,6 +475,15 @@ const renderMessage = (msg, i) => {
         >
           👥 {onlineUsers} online
         </Typography>
+        <Button
+    variant="outlined"
+    size="small"
+    startIcon={<GavelIcon />}
+    onClick={() => setLeaderboardOpen(true)}
+    sx={{ textTransform: 'none' }}
+  >
+    Leaderboard
+  </Button>
       </DialogTitle>
       <Divider />
       <DialogContent dividers sx={{ minHeight: 300, maxHeight: 400 }}>
@@ -480,6 +574,20 @@ const renderMessage = (msg, i) => {
             disabled={auction?.status === 'closed'}
             onKeyDown={(e) => e.key === 'Enter' && auction?.status !== 'closed' && handleSend()}
           />
+          {auctionData?.middlemanId === auth.currentUser?.uid && (
+  <FormControlLabel
+    control={
+      <Switch
+        checked={isAnnouncement}
+        onChange={() => setIsAnnouncement(prev => !prev)}
+        color="warning"
+      />
+    }
+    label="Send as Announcement"
+    sx={{ mt: 1 }}
+  />
+)}
+
           <Button
       onClick={handleSend}
       variant="contained"
@@ -516,6 +624,46 @@ const renderMessage = (msg, i) => {
     ))}
   </List>
 </Popover>
+
+
+
+<Dialog open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} maxWidth="xs" fullWidth>
+  <DialogTitle>🏆 Auction Leaderboard</DialogTitle>
+  <DialogContent dividers>
+    {topBids.length === 0 ? (
+      <Typography>No bids yet.</Typography>
+    ) : (
+      topBids.map((bid, index) => (
+        <Box
+          key={index}
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          p={1}
+          bgcolor={index === 0 ? '#e3f2fd' : '#f5f5f5'}
+          borderRadius={2}
+          mb={1}
+        >
+          <Box display="flex" alignItems="center" gap={1}>
+            <Avatar src={bid.profilePicture || ''} />
+            <Box>
+              <Typography fontWeight="bold">{index + 1}. {bid.wholesalerName || 'Unknown'}</Typography>
+              <Typography variant="caption">{new Date(bid.bidTime).toLocaleTimeString()}</Typography>
+            </Box>
+          </Box>
+          <Chip label={`₹${bid.amount}`} color={index === 0 ? 'primary' : 'default'} />
+        </Box>
+      ))
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setLeaderboardOpen(false)}>Close</Button>
+  </DialogActions>
+</Dialog>
+
+
+
+
     </Dialog>
 
     {/* ✅ Online Users Dialog */}
