@@ -204,6 +204,35 @@ const getRemainingTime = (auction) => {
 
 
 
+useEffect(() => {
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes bounceInScale {
+      0% {
+        opacity: 0;
+        transform: scale(0.3);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.05);
+      }
+      70% {
+        transform: scale(0.9);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+  return () => {
+    document.head.removeChild(style);
+  };
+}, []);
+
+
+
+
 
 const handlePlaceBid = async () => {
   const bid = parseFloat(bidAmount);
@@ -514,20 +543,58 @@ const handlePlaceBid = async () => {
     )}
 
     {/* Win/Loss Info */}
-    {auction.status === 'closed' ? (
-      auction.highestBid?.wholesalerId === uid ? (
-        <>
-          <Lottie animationData={winnerAnim} style={{ height: 120 }} loop={false} />
-          <Typography color="success.main" fontWeight="bold">🎉 You won this auction!</Typography>
-        </>
-      ) : (
-        <Typography color="error" fontWeight="bold">Auction Ended</Typography>
-      )
-    ) : (
-      <Typography color="primary" fontWeight="bold">
-        Time Left: {getRemainingTime(auction)}
+   {auction.status === 'closed' ? (
+  auction.highestBid?.wholesalerId === uid ? (
+    <Box
+      sx={{
+        mt: 3,
+        p: 3,
+        borderRadius: '12px',
+        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)',
+        backgroundColor: '#f0fdfa',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        color: '#065f46', // dark emerald color
+        gap: 2
+      }}
+    >
+      <Box
+        sx={{
+          width: 150,
+          height: 150,
+          '& > div': {
+            borderRadius: '50%'
+          },
+          animation: 'bounceInScale 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+        }}
+      >
+        <Lottie animationData={winnerAnim} loop={false} />
+      </Box>
+      <Typography 
+        variant="h3" 
+        fontWeight={700} 
+        component="h2" 
+        sx={{ letterSpacing: '-0.03em' }}
+      >
+        🎉 You won this auction!
       </Typography>
-    )}
+      <Typography variant="body1" sx={{ color: '#059669', maxWidth: 400, mx: 'auto' }}>
+        Congratulations on your successful bid! Your careful bidding strategy paid off.
+      </Typography>
+    </Box>
+  ) : (
+    <Typography color="error.main" fontWeight="bold" sx={{ mt: 3, textAlign: 'center' }}>
+      Auction Ended
+    </Typography>
+  )
+) : (
+  <Typography color="primary.main" fontWeight="bold">
+    Time Left: {getRemainingTime(auction)}
+  </Typography>
+)}
+
 
     {/* Action Buttons */}
     <Button
