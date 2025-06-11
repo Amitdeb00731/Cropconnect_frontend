@@ -7,7 +7,7 @@ import {
 import Autocomplete from '@mui/material/Autocomplete';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { auth, db } from './firebase';
-import { runTransaction, doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, getDocs, orderBy, limit } from 'firebase/firestore';
+import { runTransaction, doc, addDoc, Timestamp, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, getDocs, orderBy, limit } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import TopNavbar from './TopNavbar';
 import logo from './assets/Screenshot 2025-05-07 113933-Photoroom.png';
@@ -337,6 +337,36 @@ const handlePlaceBid = async () => {
         amount: bid,
         bidTime: Date.now()
       });
+
+      // Firestore ref to auctionChats messages
+const chatRef = collection(db, 'auctionChats', auction.id, 'messages');
+
+// Send "bid placed" system message
+await addDoc(chatRef, {
+  senderId: userId,
+  senderName: wholesalerName,
+  profilePicture,
+  role: 'bidder',
+  message: `💸 ${wholesalerName} bid ₹${bid.toFixed(2)} (🔥 Highest Bid!)`,
+  timestamp: Timestamp.now(),
+  isBidStatus: true
+});
+
+// If there was a previous highest bidder, notify outbid
+if (currentHighest?.wholesalerId && currentHighest.wholesalerId !== userId) {
+  const diff = bid - currentHighest.amount;
+  await addDoc(chatRef, {
+    senderId: userId,
+    senderName: wholesalerName,
+    profilePicture,
+    role: 'bidder',
+    message: `⛔️ ${currentHighest.wholesalerName} was outbid by ₹${diff.toFixed(2)} by ${wholesalerName}`,
+    timestamp: Timestamp.now(),
+    isBidStatus: true
+  });
+}
+
+
 
       // Update auction highest bid
       transaction.update(auctionRef, {

@@ -345,6 +345,30 @@ const renderMessage = (msg, i) => {
 }
 
 
+if (msg.isBidStatus) {
+  return (
+    <Box
+      key={i}
+      width="100%"
+      my={1}
+      px={2}
+      py={1}
+      sx={{
+        backgroundColor: '#e3f2fd',
+        borderLeft: '4px solid #1976d2',
+        borderRadius: 2,
+        fontStyle: 'italic',
+        animation: 'fadeIn 0.3s ease-in-out'
+      }}
+    >
+      <Typography variant="body2" fontWeight="bold">
+        {msg.message}
+      </Typography>
+    </Box>
+  );
+}
+
+
 
 
   const isOwn = msg.senderId === auth.currentUser?.uid;
