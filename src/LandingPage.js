@@ -174,6 +174,78 @@ const handleSnackbarClose = () => {
         </Container>
       </Box>
 
+
+
+{/* Product Hunt Launch Section */}
+<Box sx={{ py: 6, bgcolor: '#fff' }}>
+  <Container maxWidth="md">
+    <Typography
+      variant="h4"
+      textAlign="center"
+      fontWeight={700}
+      gutterBottom
+      fontSize={{ xs: '1.75rem', md: '2.25rem' }}
+    >
+      We’re Live on Product Hunt!
+    </Typography>
+    <Typography
+      variant="body1"
+      textAlign="center"
+      color="text.secondary"
+      sx={{ mb: 4 }}
+      fontSize={{ xs: '0.95rem', md: '1.1rem' }}
+    >
+      Support CropConnect by checking out our Product Hunt launch 🚀
+    </Typography>
+
+    <Box
+      display="flex"
+      flexDirection={{ xs: 'column', md: 'row' }}
+      alignItems="center"
+      justifyContent="center"
+      gap={4}
+    >
+      {/* Badge 1: Drive Support */}
+      <a
+        href="https://www.producthunt.com/products/cropconnect?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-cropconnect"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <img
+          src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=981534&theme=light&t=1750444610971"
+          alt="CropConnect - Easing rice supply chain management | Product Hunt"
+          style={{
+            width: '100%',
+            maxWidth: 250,
+            height: 'auto',
+          }}
+        />
+      </a>
+
+      {/* Badge 2: Embedded Launch Card */}
+      <Box
+        sx={{
+          width: '100%',
+          maxWidth: 500,
+          height: { xs: 350, sm: 405 },
+        }}
+      >
+        <iframe
+          style={{ border: 'none', width: '100%', height: '100%' }}
+          src="https://cards.producthunt.com/cards/products/1078587"
+          frameBorder="0"
+          scrolling="no"
+          allowFullScreen
+          title="CropConnect on Product Hunt"
+        ></iframe>
+      </Box>
+    </Box>
+  </Container>
+</Box>
+
+
+
+
       {/* Feature Cards */}
       <Container id="features" sx={{ py: 6 }}>
         <h2 style={{ textAlign: 'center', fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '32px', fontWeight: 600 }}>
